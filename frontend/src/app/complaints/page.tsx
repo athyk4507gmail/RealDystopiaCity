@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, Complaint, Ward } from "@/lib/api";
 import DataSourceBadge from "@/components/DataSourceBadge";
+import LoadingSkeleton from "@/components/LoadingSkeleton";
+import DataError from "@/components/DataError";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import { formatDateTime, parseWardId } from "@/lib/validation";
 
 export default function ComplaintsPage() {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -10,26 +14,38 @@ export default function ComplaintsPage() {
   const [wardFilter, setWardFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    Promise.all([api.complaints.all(), api.water.wards()])
-      .then(([c, w]) => {
-        setComplaints(c);
-        setWards(w);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [c, w] = await Promise.all([api.complaints.all(), api.water.wards()]);
+      setComplaints(c);
+      setWards(w);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load complaints");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
 
   const filtered = useMemo(() => {
     return complaints.filter((c) => {
-      const wardMatch = wardFilter === "all" || String(c.ward_id) === wardFilter;
+      const wardMatch =
+        wardFilter === "all" ||
+        (parseWardId(wardFilter) !== null && c.ward_id === parseWardId(wardFilter));
       const statusMatch = statusFilter === "all" || c.status === statusFilter;
       return wardMatch && statusMatch;
     });
   }, [complaints, wardFilter, statusFilter]);
 
   return (
+    <ErrorBoundary fallbackTitle="Complaints module failed to render">
     <div className="p-6 space-y-6">
+      {error && <DataError message={error} onRetry={load} />}
       <div>
         <h1 className="text-2xl font-bold">Water Complaints</h1>
         <p className="text-slate-400 text-sm mt-1">Simulated citizen reports across all wards</p>
@@ -79,7 +95,7 @@ export default function ComplaintsPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={4} className="p-6 text-center text-slate-400">Loading complaints...</td>
+                <td colSpan={4} className="p-6"><LoadingSkeleton rows={4} /></td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
@@ -96,7 +112,7 @@ export default function ComplaintsPage() {
                     </span>
                   </td>
                   <td className="p-3 text-slate-400">
-                    {new Date(c.created_at).toLocaleString()}
+                    {formatDateTime(c.created_at)}
                   </td>
                 </tr>
               ))
@@ -105,5 +121,6 @@ export default function ComplaintsPage() {
         </table>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

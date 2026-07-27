@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { MessageCircle, Send, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { sanitizeChatMessage } from "@/lib/validation";
 import clsx from "clsx";
 
 interface Message {
@@ -22,8 +23,8 @@ export default function ChatPanel({ module }: { module: string }) {
   const [loading, setLoading] = useState(false);
 
   const send = async () => {
-    if (!input.trim() || loading) return;
-    const userMsg = input.trim();
+    const userMsg = sanitizeChatMessage(input);
+    if (!userMsg || loading) return;
     setInput("");
     setMessages((m) => [...m, { role: "user", content: userMsg }]);
     setLoading(true);
@@ -91,6 +92,7 @@ export default function ChatPanel({ module }: { module: string }) {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && send()}
               placeholder="Why is Ward 4 not getting water?"
+              maxLength={500}
               className="flex-1 bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent"
             />
             <button

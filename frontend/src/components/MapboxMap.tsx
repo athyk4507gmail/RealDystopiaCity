@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 
 const LeafletMap = dynamic(() => import("./LeafletMap"), { ssr: false });
@@ -45,6 +45,16 @@ interface MapboxMapProps {
 }
 
 export default function MapboxMap(props: MapboxMapProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <div className={props.className ?? "h-full w-full"} aria-hidden />;
+  }
+
   const useMapbox = Boolean(mapboxgl.accessToken);
 
   if (!useMapbox) {
