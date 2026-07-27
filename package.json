@@ -1,0 +1,10 @@
+{
+  "name": "citypulse-ai",
+  "private": true,
+  "scripts": {
+    "dev:backend": "cd backend && .venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:frontend": "cd frontend && npm run dev -- -H 127.0.0.1 -p 3000",
+    "dev": "echo 'Run in two terminals: npm run dev:backend && npm run dev:frontend'",
+    "install:all": "cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && cd ../frontend && npm install"
+  }
+}
