@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, CartesianGrid,
 } from "recharts";
-import { RefreshCw, Upload, ChevronDown, ChevronRight, Droplets, Thermometer, Newspaper, Building2, ExternalLink } from "lucide-react";
+import { RefreshCw, Upload, ChevronDown, ChevronRight, Droplets, Thermometer, Newspaper, Building2, ExternalLink, MessageSquare, Sparkles, Send } from "lucide-react";
 import { api, Ward, WaterSchedule, DemandPrediction } from "@/lib/api";
 import type { WaterLevelReading, WeatherReading } from "@/lib/scrapers/types";
 import type { WaterNewsItem } from "@/lib/scrapers/waterNews";
@@ -95,6 +95,11 @@ export default function WaterPage() {
   const [loading, setLoading] = useState(true);
   const [leakResult, setLeakResult] = useState<{ reasoning?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Citizen Q&A state
+  const [qaQuestion, setQaQuestion] = useState("");
+  const [qaAnswer, setQaAnswer] = useState<string | null>(null);
+  const [qaLoading, setQaLoading] = useState(false);
 
   // News state
   const [news, setNews] = useState<WaterNewsItem[]>([]);
@@ -187,6 +192,33 @@ export default function WaterPage() {
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Leak detection failed");
+    }
+  };
+
+  const handleAskQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!qaQuestion.trim()) return;
+    setQaLoading(true);
+    setQaAnswer(null);
+    const ward = wards.find((w) => w.id === selectedWard);
+    const wardSched = schedule.find((s) => s.ward_id === selectedWard);
+    try {
+      const result = await api.water.askQuestion({
+        question: qaQuestion.trim(),
+        ward_context: {
+          name: ward?.name ?? "your ward",
+          supply_today: wardSched?.supply_today ?? false,
+          supply_start_time: wardSched?.supply_start_time ?? "N/A",
+          supply_end_time: wardSched?.supply_end_time ?? "N/A",
+          days_since_supply: ward?.days_since_supply ?? 0,
+          open_issues: ward?.complaints ?? 0,
+        },
+      });
+      setQaAnswer(result.answer ?? "I couldn't find an answer. Please contact BWSSB at 1916.");
+    } catch {
+      setQaAnswer("Unable to reach AI assistant right now. Please try again or call BWSSB helpline: 1916.");
+    } finally {
+      setQaLoading(false);
     }
   };
 
@@ -419,7 +451,40 @@ export default function WaterPage() {
                   <p>• Use a bucket instead of a hose for washing vehicles</p>
                   <p>• Report leaks immediately via the form below</p>
                 </div>
-                <p className="text-xs text-accent mt-3">Ask CityPulse AI: &quot;How can I save water this summer?&quot;</p>
+              </div>
+
+              {/* Citizen Q&A — Gemma AI */}
+              <div className="rounded-xl border border-border p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-accent" />
+                  <h3 className="font-medium text-sm">Ask AI about your water supply</h3>
+                  <span className="text-xs bg-accent/10 text-accent border border-accent/20 px-1.5 py-0.5 rounded ml-auto">Gemma 4</span>
+                </div>
+                <form onSubmit={handleAskQuestion} className="flex gap-2">
+                  <input
+                    id="citizen-qa-input"
+                    type="text"
+                    value={qaQuestion}
+                    onChange={(e) => setQaQuestion(e.target.value)}
+                    placeholder='e.g. "When will water come today?" or "Why was supply delayed?"'
+                    className="flex-1 bg-white/5 border border-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent/50"
+                  />
+                  <button
+                    id="citizen-qa-submit"
+                    type="submit"
+                    disabled={qaLoading || !qaQuestion.trim()}
+                    className="px-3 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {qaLoading ? (
+                      <span className="inline-block w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                  </button>
+                </form>
+                {qaAnswer && (
+                  <ReasoningBox reasoning={qaAnswer} title="AI Answer — Gemma 4" />
+                )}
               </div>
 
               <div className="rounded-xl border border-border p-4">

@@ -18,7 +18,10 @@ import {
   Megaphone,
   Send,
   XCircle,
+  Sparkles,
+  Brain,
 } from "lucide-react";
+import { api } from "@/lib/api";
 import type { WaterAnnouncement } from "@/lib/water/announcementsStore";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DataError from "@/components/DataError";
@@ -70,6 +73,19 @@ export default function MunicipalityDashboardPage() {
   const [announceLoading, setAnnounceLoading] = useState(false);
   const [announceSuccess, setAnnounceSuccess] = useState<string | null>(null);
   const [announceError, setAnnounceError] = useState<string | null>(null);
+
+  // AI — Announcement Draft state
+  const [announceHint, setAnnounceHint] = useState("");
+  const [draftLoading, setDraftLoading] = useState(false);
+
+  // AI — Issue Insights state
+  const [insightsSummary, setInsightsSummary] = useState<string | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+
+  // AI — Triage state: issueId -> { severity, category, suggested_response, loading }
+  const [triageResults, setTriageResults] = useState<
+    Record<string, { severity: string; category: string; suggested_response: string; loading?: boolean } | null>
+  >({});
 
   // -------------------------------------------------------------------------
   // Auth Check (Route Guard)
@@ -188,6 +204,68 @@ export default function MunicipalityDashboardPage() {
   const handleLogout = async () => {
     await fetch("/api/water/auth", { method: "DELETE" });
     router.push("/water/login?role=municipality");
+  };
+
+  // -------------------------------------------------------------------------
+  // AI — Draft Announcement
+  // -------------------------------------------------------------------------
+  const handleDraftAnnouncement = async () => {
+    if (!announceHint.trim()) return;
+    setDraftLoading(true);
+    try {
+      const result = await api.water.draftAnnouncement({
+        area: announceArea,
+        hint: announceHint.trim(),
+      });
+      if (result.draft) setAnnounceMessage(result.draft);
+    } catch {
+      // Fallback: leave the textarea empty so staff can type manually
+    } finally {
+      setDraftLoading(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // AI — Issue Insights
+  // -------------------------------------------------------------------------
+  const handleLoadInsights = async () => {
+    if (issues.length === 0) return;
+    setInsightsLoading(true);
+    setInsightsSummary(null);
+    // Summarise issue counts by type — scoped, not full descriptions
+    const countMap: Record<string, number> = {};
+    issues.forEach((i) => { countMap[i.type] = (countMap[i.type] ?? 0) + 1; });
+    const issueSummary = Object.entries(countMap).map(([type, count]) => ({ type, count }));
+    try {
+      const result = await api.water.issueInsights({ issue_summary: issueSummary });
+      setInsightsSummary(result.summary ?? "No insight generated.");
+    } catch {
+      setInsightsSummary("Unable to load insights right now. Please refresh and try again.");
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // AI — Complaint Triage
+  // -------------------------------------------------------------------------
+  const handleTriage = async (issueId: string, description: string, type: string) => {
+    setTriageResults((prev) => ({ ...prev, [issueId]: null }));
+    setTriageResults((prev) => ({ ...prev, [issueId]: { severity: "", category: "", suggested_response: "", loading: true } }));
+    try {
+      const result = await api.water.triageComplaint({ description, type });
+      setTriageResults((prev) => ({ ...prev, [issueId]: { ...result, loading: false } }));
+    } catch {
+      setTriageResults((prev) => ({
+        ...prev,
+        [issueId]: {
+          severity: "medium",
+          category: type.replace("_", " "),
+          suggested_response: "Our team will investigate and respond within 24 hours.",
+          loading: false,
+        },
+      }));
+    }
   };
 
   // -------------------------------------------------------------------------
@@ -438,6 +516,36 @@ export default function MunicipalityDashboardPage() {
                 </button>
               </div>
 
+              {/* AI Issue Insights Panel */}
+              <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-accent flex items-center gap-1.5">
+                    <Brain className="w-3.5 h-3.5" />
+                    AI Issue Insights — Gemma 4
+                  </p>
+                  <button
+                    id="insights-refresh-btn"
+                    type="button"
+                    onClick={handleLoadInsights}
+                    disabled={insightsLoading || issues.length === 0}
+                    className="text-xs text-accent hover:text-white bg-accent/10 px-2.5 py-1 rounded border border-accent/20 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {insightsLoading ? (
+                      <span className="inline-block w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3 h-3" />
+                    )}
+                    {insightsSummary ? "Refresh" : "Get Insights"}
+                  </button>
+                </div>
+                {insightsSummary && (
+                  <p className="text-sm text-slate-300 leading-relaxed">{insightsSummary}</p>
+                )}
+                {!insightsSummary && !insightsLoading && (
+                  <p className="text-xs text-slate-500 italic">Click "Get Insights" to generate an AI pattern summary of current issues.</p>
+                )}
+              </div>
+
               {issuesLoading && <LoadingSkeleton rows={4} />}
               {issuesError && <DataError message={issuesError} onRetry={fetchIssues} />}
 
@@ -493,6 +601,45 @@ export default function MunicipalityDashboardPage() {
                         <Clock className="w-3 h-3" />
                         Reported at: {new Date(issue.reported_at).toLocaleString("en-IN")}
                       </p>
+
+                      {/* AI Triage Button + Result */}
+                      {(() => {
+                        const triage = triageResults[issue.id];
+                        return (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => handleTriage(issue.id, issue.description, issue.type)}
+                              disabled={triage?.loading}
+                              className="flex items-center gap-1.5 text-xs text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-lg hover:bg-accent/20 disabled:opacity-50"
+                            >
+                              {triage?.loading ? (
+                                <span className="inline-block w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                              ) : (
+                                <Sparkles className="w-3 h-3" />
+                              )}
+                              AI Triage
+                            </button>
+                            {triage && !triage.loading && triage.severity && (
+                              <div className="rounded-lg border border-accent/20 bg-accent/5 p-2.5 space-y-1.5">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                                    triage.severity === "critical" ? "bg-red-500/20 text-red-400" :
+                                    triage.severity === "high" ? "bg-orange-500/20 text-orange-400" :
+                                    triage.severity === "medium" ? "bg-yellow-500/20 text-yellow-400" :
+                                    "bg-emerald-500/20 text-emerald-400"
+                                  }`}>{triage.severity.toUpperCase()}</span>
+                                  <span className="text-xs text-slate-400">{triage.category}</span>
+                                </div>
+                                <p className="text-xs text-slate-300 leading-relaxed">
+                                  <span className="text-accent font-medium">Suggested response: </span>
+                                  {triage.suggested_response}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Staff Resolution & Comment Controls */}
                       <div className="border-t border-border/60 pt-3 space-y-3">
@@ -721,7 +868,7 @@ export default function MunicipalityDashboardPage() {
             <div className="space-y-4">
               <p className="text-xs text-slate-400">
                 Post an announcement to the citizen disruption feed for the selected area and email all
-                configured recipients via Resend.
+                configured recipients via Gmail SMTP.
               </p>
 
               <form onSubmit={handleSendAnnouncement} className="space-y-4">
@@ -741,6 +888,39 @@ export default function MunicipalityDashboardPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* AI Draft Assistant */}
+                <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+                  <p className="text-xs font-medium text-accent flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Draft with AI — Gemma 4
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      id="announce-hint-input"
+                      type="text"
+                      value={announceHint}
+                      onChange={(e) => setAnnounceHint(e.target.value)}
+                      placeholder='Short note: e.g. "pipe repair Tue 10am-2pm Ward 4"'
+                      className="flex-1 bg-white/5 border border-border rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-accent/50"
+                    />
+                    <button
+                      id="announce-draft-btn"
+                      type="button"
+                      onClick={handleDraftAnnouncement}
+                      disabled={draftLoading || !announceHint.trim()}
+                      className="px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-semibold hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                    >
+                      {draftLoading ? (
+                        <span className="inline-block w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3 h-3" />
+                      )}
+                      Draft
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500">AI will fill the message below — you can edit before sending.</p>
                 </div>
 
                 <div className="space-y-1.5">

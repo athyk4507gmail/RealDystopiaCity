@@ -21,7 +21,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import DataError from "@/components/DataError";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import type { PipelineAccount } from "@/lib/water/mockAccounts";
-import { MOCK_ACCOUNTS } from "@/lib/water/mockAccounts";
+import { MOCK_ACCOUNTS, getAccount } from "@/lib/water/mockAccounts";
 import type { ScheduledEvent } from "@/lib/water/mockSchedules";
 import {
   ZONES,
@@ -71,8 +71,23 @@ function formatDate(iso: string): string {
   });
 }
 
+// Helper to dynamically load Razorpay checkout script
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window !== "undefined" && (window as any).Razorpay) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
 // ---------------------------------------------------------------------------
-// Pay Bill Panel Sub-component
+// Pay Bill Panel Sub-component (Razorpay Test Mode Integration)
 // ---------------------------------------------------------------------------
 function PayBillPanel({
   account,
@@ -81,123 +96,215 @@ function PayBillPanel({
   account: PipelineAccount;
   onPaid: () => void;
 }) {
-  const [upi, setUpi] = useState("");
-  const [step, setStep] = useState<"form" | "processing" | "success">("form");
-  const [txnId] = useState(
-    () => "TXN" + Math.random().toString(36).slice(2, 10).toUpperCase(),
-  );
-  const [upiError, setUpiError] = useState<string | null>(null);
-  const paidAt = new Date().toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  const [step, setStep] = useState<
+    "idle" | "creating_order" | "verifying" | "success" | "error"
+  >("idle");
+  const [payError, setPayError] = useState<string | null>(null);
+  const [txnDetails, setTxnDetails] = useState<{
+    paymentId: string;
+    orderId: string;
+    amount: number;
+    timestamp: string;
+  } | null>(null);
 
-  const handlePay = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!UPI_REGEX.test(upi.trim())) {
-      setUpiError("Enter a valid UPI ID (format: name@bank, e.g. user@okaxis)");
+  const handleRazorpayPay = async () => {
+    setPayError(null);
+    setStep("creating_order");
+
+    const loaded = await loadRazorpayScript();
+    if (!loaded) {
+      setPayError("Failed to load Razorpay SDK. Please check your internet connection.");
+      setStep("error");
       return;
     }
-    setUpiError(null);
-    setStep("processing");
-    setTimeout(() => {
-      paidAccountsSet.add(account.accountNumber);
-      setStep("success");
-      onPaid();
-    }, 2500);
+
+    try {
+      // 1. Create order on backend (amount is fetched server-side from account record)
+      const res = await fetch("/api/payment/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountNumber: account.accountNumber }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || `Order creation failed (${res.status})`);
+      }
+
+      const orderData = await res.json();
+
+      // 2. Configure & open Razorpay Checkout Modal
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: "BWSSB Water Utility",
+        description: `Water Bill Payment — ${account.accountNumber}`,
+        order_id: orderData.orderId,
+        handler: async function (response: {
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+          razorpay_signature: string;
+        }) {
+          setStep("verifying");
+          try {
+            // 3. Verify Razorpay HMAC-SHA256 signature server-side
+            const verifyRes = await fetch("/api/payment/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                accountNumber: account.accountNumber,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+
+            const verifyData = await verifyRes.json();
+
+            if (!verifyRes.ok || !verifyData.success) {
+              throw new Error(verifyData.error || "Payment verification failed");
+            }
+
+            setTxnDetails({
+              paymentId: verifyData.paymentId,
+              orderId: verifyData.orderId,
+              amount: verifyData.amountPaid,
+              timestamp: new Date(verifyData.timestamp).toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata",
+                dateStyle: "medium",
+                timeStyle: "short",
+              }),
+            });
+            setStep("success");
+            onPaid();
+          } catch (vErr) {
+            setPayError(
+              vErr instanceof Error
+                ? vErr.message
+                : "Server signature verification failed."
+            );
+            setStep("error");
+          }
+        },
+        prefill: {
+          name: account.ownerName,
+        },
+        theme: {
+          color: "#06b6d4",
+        },
+        modal: {
+          ondismiss: function () {
+            if (step !== "success") setStep("idle");
+          },
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on("payment.failed", function (resp: any) {
+        setPayError(resp.error?.description || "Payment failed or was cancelled.");
+        setStep("error");
+      });
+      rzp.open();
+    } catch (err) {
+      setPayError(
+        err instanceof Error ? err.message : "Failed to initiate Razorpay checkout"
+      );
+      setStep("error");
+    }
   };
 
-  if (step === "success") {
+  if (step === "success" && txnDetails) {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 text-emerald-400">
           <CheckCircle2 className="w-5 h-5" />
-          <span className="font-semibold text-base">Payment Successful</span>
+          <span className="font-semibold text-base">Payment Verified via Razorpay</span>
         </div>
         <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-4 space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-slate-400">Transaction ID</span>
-            <span className="font-mono text-xs text-accent font-semibold">{txnId}</span>
+            <span className="text-slate-400">Razorpay Payment ID</span>
+            <span className="font-mono text-xs text-accent font-semibold">
+              {txnDetails.paymentId}
+            </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-400">Amount Paid</span>
-            <span className="font-bold">₹{account.monthlyBillAmount.toLocaleString("en-IN")}</span>
+            <span className="text-slate-400">Razorpay Order ID</span>
+            <span className="font-mono text-xs text-slate-300">
+              {txnDetails.orderId}
+            </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-400">UPI ID</span>
-            <span className="font-mono text-xs">{upi}</span>
+            <span className="text-slate-400">Amount Verified &amp; Paid</span>
+            <span className="font-bold text-emerald-400">
+              ₹{txnDetails.amount.toLocaleString("en-IN")}
+            </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-400">Timestamp</span>
-            <span className="text-xs">{paidAt}</span>
+            <span className="text-slate-400">Verified At</span>
+            <span className="text-xs">{txnDetails.timestamp}</span>
           </div>
         </div>
-        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3.5 py-2.5 flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
-          <p className="text-xs text-yellow-300">
-            <strong>Demo Payment Simulation</strong> — No real transaction occurred. No funds were transferred.
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5 flex items-start gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-emerald-300">
+            <strong>HMAC-SHA256 Signature Verified</strong> — Bill status updated to Paid in DB.
           </p>
         </div>
       </div>
     );
   }
 
-  if (step === "processing") {
+  if (step === "creating_order" || step === "verifying") {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-8">
         <span className="inline-block w-8 h-8 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-        <p className="text-sm font-medium text-slate-300">Processing demo payment…</p>
-        <p className="text-xs text-slate-500">Verifying UPI ID with {upi}</p>
+        <p className="text-sm font-medium text-slate-300">
+          {step === "creating_order"
+            ? "Creating Razorpay Order…"
+            : "Verifying Signature Server-side…"}
+        </p>
+        <p className="text-xs text-slate-500">Communicating securely with Razorpay servers</p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handlePay} className="space-y-4">
-      <div className="space-y-1.5">
-        <label className="text-xs text-slate-400 uppercase tracking-wide">
-          Enter UPI ID
-        </label>
-        <input
-          id="citizen-upi-input"
-          type="text"
-          value={upi}
-          onChange={(e) => setUpi(e.target.value)}
-          placeholder="e.g. resident@okicici or user@ybl"
-          className="w-full bg-white/5 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent/50"
-        />
-        {upiError && (
-          <p className="text-xs text-red-400 flex items-center gap-1">
-            <AlertCircle className="w-3 h-3" />
-            {upiError}
-          </p>
-        )}
-      </div>
+    <div className="space-y-4">
+      {payError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-red-400">Payment Error</p>
+            <p>{payError}</p>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-lg bg-white/5 border border-border px-3.5 py-2.5 flex justify-between text-sm">
-        <span className="text-slate-400">Total Payable</span>
+        <span className="text-slate-400">Total Payable Amount</span>
         <span className="font-bold text-accent">
           ₹{account.monthlyBillAmount.toLocaleString("en-IN")}
         </span>
       </div>
 
-      <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 flex items-start gap-2">
-        <AlertCircle className="w-3.5 h-3.5 text-yellow-400 shrink-0 mt-0.5" />
-        <p className="text-xs text-yellow-300">
-          <strong>Demo Simulation</strong> — No real payment gateway. No money charged.
+      <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2.5 flex items-start gap-2">
+        <CreditCard className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-cyan-300">
+          <strong>Razorpay Gateway (Test Mode)</strong> — Supports UPI, Cards, NetBanking &amp; Wallets. Server-verified via HMAC-SHA256 signature.
         </p>
       </div>
 
       <button
         id="citizen-pay-now-btn"
-        type="submit"
+        type="button"
+        onClick={handleRazorpayPay}
         className="w-full px-4 py-2.5 rounded-lg bg-accent text-black font-semibold text-sm hover:opacity-90 flex items-center justify-center gap-2"
       >
         <CreditCard className="w-4 h-4" />
-        Pay Now (Demo)
+        Pay ₹{account.monthlyBillAmount.toLocaleString("en-IN")} via Razorpay
       </button>
-    </form>
+    </div>
   );
 }
 
@@ -288,16 +395,10 @@ export default function CitizenDashboardPage() {
   // Account derives paid state
   // -------------------------------------------------------------------------
   useEffect(() => {
-    const base = MOCK_ACCOUNTS.find((a) => a.accountNumber === selectedAccount)!;
-    if (paidAccountsSet.has(selectedAccount)) {
-      setAccount({
-        ...base,
-        paymentStatus: "paid",
-        lastPaidDate: new Date().toISOString().split("T")[0],
-      });
-    } else {
-      setAccount(base);
-    }
+    const acc =
+      getAccount(selectedAccount) ||
+      MOCK_ACCOUNTS.find((a) => a.accountNumber === selectedAccount)!;
+    setAccount(acc);
     setShowPayPanel(false);
   }, [selectedAccount, paidRefresh]);
 

@@ -37,6 +37,27 @@ export const api = {
       const res = await fetch(`${API_BASE}/api/water/leakage/detect`, { method: "POST", body: form });
       return res.json();
     },
+    // AI endpoints
+    triageComplaint: (data: { description: string; type: string }) =>
+      fetchApi<{ severity: string; category: string; suggested_response: string }>(
+        "/api/water/ai/triage",
+        { method: "POST", body: JSON.stringify(data) }
+      ),
+    draftAnnouncement: (data: { area: string; hint: string }) =>
+      fetchApi<{ draft: string }>(
+        "/api/water/ai/draft-announcement",
+        { method: "POST", body: JSON.stringify(data) }
+      ),
+    askQuestion: (data: { question: string; ward_context: object }) =>
+      fetchApi<{ answer: string }>(
+        "/api/water/ai/ask",
+        { method: "POST", body: JSON.stringify(data) }
+      ),
+    issueInsights: (data: { issue_summary: object[] }) =>
+      fetchApi<{ summary: string }>(
+        "/api/water/ai/insights",
+        { method: "POST", body: JSON.stringify(data) }
+      ),
   },
   complaints: {
     all: (wardId?: number, status?: string) => {

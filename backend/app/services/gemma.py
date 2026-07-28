@@ -9,11 +9,18 @@ from app.config import settings
 
 
 class GemmaService:
-    """Gemma 4 integration with Google AI, Ollama, and rule-based fallback."""
+    """Gemma AI integration supporting:
+    1. Generic OpenAI-compatible provider (GEMMA_API_KEY + GEMMA_API_BASE_URL) — primary when set
+    2. Google AI Generative Language API (GOOGLE_API_KEY) — secondary
+    3. Ollama local model — tertiary
+    4. Rule-based deterministic fallback — always available
+    """
 
     def __init__(self):
         self.model_id = settings.gemma_model_id
         self.google_api_key = settings.google_api_key
+        self.gemma_api_key = settings.gemma_api_key
+        self.gemma_api_base_url = settings.gemma_api_base_url.rstrip("/")
         self.ollama_url = settings.ollama_base_url.rstrip("/")
 
     async def generate(
@@ -23,16 +30,56 @@ class GemmaService:
         json_mode: bool = True,
         image_b64: Optional[str] = None,
     ) -> str:
+        # 1. Generic OpenAI-compatible provider (highest priority when key+url are set)
+        if self.gemma_api_key and self.gemma_api_base_url:
+            result = await self._call_openai_compatible(system_prompt, user_prompt)
+            if result:
+                return result
+
+        # 2. Google AI Generative Language API
         if self.google_api_key:
             result = await self._call_google(system_prompt, user_prompt, image_b64)
             if result:
                 return result
 
+        # 3. Ollama local fallback
         result = await self._call_ollama(system_prompt, user_prompt, image_b64)
         if result:
             return result
 
+        # 4. Rule-based deterministic fallback
         return self._fallback(system_prompt, user_prompt, json_mode)
+
+    async def _call_openai_compatible(
+        self, system_prompt: str, user_prompt: str
+    ) -> Optional[str]:
+        """Call any OpenAI-compatible chat completions endpoint.
+        Works with: HuggingFace Inference API, OpenRouter, Groq, Together AI, vLLM, etc.
+        Set GEMMA_API_BASE_URL=https://provider/v1 and GEMMA_API_KEY=your-key in backend/.env
+        """
+        url = f"{self.gemma_api_base_url}/chat/completions"
+        payload: dict[str, Any] = {
+            "model": self.model_id,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.3,
+            "max_tokens": 1024,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.gemma_api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
+        except Exception:
+            return None
 
     async def _call_google(
         self, system_prompt: str, user_prompt: str, image_b64: Optional[str]
@@ -47,7 +94,7 @@ class GemmaService:
 
         payload = {
             "contents": [{"parts": parts}],
-            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048},
+            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024},
         }
         try:
             async with httpx.AsyncClient(timeout=60) as client:
@@ -63,7 +110,7 @@ class GemmaService:
         self, system_prompt: str, user_prompt: str, image_b64: Optional[str]
     ) -> Optional[str]:
         payload: dict[str, Any] = {
-            "model": "gemma4:12b-it",
+            "model": self.model_id,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -103,10 +150,28 @@ class GemmaService:
                 ),
                 "resilience_index": 62,
             })
+        if "complaint triage" in system_prompt.lower():
+            return json.dumps({
+                "severity": "medium",
+                "category": "Infrastructure",
+                "suggested_response": "Thank you for your report. Our team will investigate and update you within 24 hours.",
+            })
+        if "announcement" in system_prompt.lower():
+            return json.dumps({
+                "draft": "Dear residents, please note a planned water supply disruption in your area. We apologize for the inconvenience and expect to restore supply as soon as possible.",
+            })
+        if "citizen question" in system_prompt.lower() or "citizen q&a" in system_prompt.lower():
+            return json.dumps({
+                "answer": "Based on current ward data, supply is expected according to the scheduled time window. Please store adequate water in advance.",
+            })
+        if "issue pattern" in system_prompt.lower() or "recurring" in system_prompt.lower():
+            return json.dumps({
+                "summary": "The most common issues are leakage reports and supply disruptions. Consider scheduling preventive maintenance for high-complaint wards.",
+            })
         return (
-            json.dumps({"response": "CityPulse AI is operating in offline mode. Configure GOOGLE_API_KEY or Ollama for live Gemma 4 responses."})
+            json.dumps({"response": "CityPulse AI is operating in offline mode. Configure GEMMA_API_KEY + GEMMA_API_BASE_URL (or GOOGLE_API_KEY) in backend/.env for live Gemma responses."})
             if json_mode
-            else "CityPulse AI offline mode: configure GOOGLE_API_KEY or Ollama for live Gemma 4."
+            else "CityPulse AI offline mode: configure GEMMA_API_KEY + GEMMA_API_BASE_URL in backend/.env for live Gemma responses."
         )
 
     def _water_fallback(self, user_prompt: str) -> dict:

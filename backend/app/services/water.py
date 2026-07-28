@@ -247,3 +247,121 @@ def get_complaints(db: Session, ward_id: Optional[int] = None, status: Optional[
         _complaint_to_dict(c, ward_map.get(c.ward_id, "Unknown"))
         for c in q.order_by(WaterComplaint.created_at.desc()).all()
     ]
+
+
+# ---------------------------------------------------------------------------
+# NEW: Gemma AI — Complaint Triage
+# ---------------------------------------------------------------------------
+async def triage_complaint(description: str, issue_type: str) -> dict:
+    """Return severity, category, and a suggested staff response for a complaint."""
+    system = (
+        "You are a water utility staff triage assistant. "
+        "Given a citizen complaint, return JSON: "
+        '{ "severity": "low|medium|high|critical", "category": string, "suggested_response": string }. '
+        "Keep suggested_response under 40 words. Be concise."
+    )
+    prompt = f"Complaint type: {issue_type}. Description: {description}"
+    try:
+        response = await gemma.generate(system, prompt)
+        result = gemma.parse_json(response)
+        if "severity" not in result:
+            raise ValueError("missing fields")
+        return result
+    except Exception:
+        return {
+            "severity": "medium",
+            "category": issue_type.replace("_", " ").title(),
+            "suggested_response": (
+                "Thank you for reporting this issue. Our team will investigate and contact you within 24 hours."
+            ),
+        }
+
+
+# ---------------------------------------------------------------------------
+# NEW: Gemma AI — Announcement Draft
+# ---------------------------------------------------------------------------
+async def draft_announcement(area: str, hint: str) -> dict:
+    """Draft a polished citizen-facing announcement from a short staff hint."""
+    system = (
+        "You are a municipal communications assistant for BWSSB water utility. "
+        "Draft a concise, professional citizen announcement. "
+        "Return JSON: { \"draft\": string }. "
+        "Keep the draft under 60 words. Use a courteous, reassuring tone."
+    )
+    prompt = f"Area: {area}. Staff note: {hint}"
+    try:
+        response = await gemma.generate(system, prompt)
+        result = gemma.parse_json(response)
+        if "draft" not in result:
+            raise ValueError("missing draft")
+        return result
+    except Exception:
+        return {
+            "draft": (
+                f"Dear residents of {area}, we wish to inform you of a scheduled water supply disruption. "
+                f"Our teams are working to restore services promptly. We apologize for the inconvenience."
+            ),
+        }
+
+
+# ---------------------------------------------------------------------------
+# NEW: Gemma AI — Citizen Q&A
+# ---------------------------------------------------------------------------
+async def answer_citizen_question(question: str, ward_context: dict) -> dict:
+    """Answer a citizen question using live ward/schedule context."""
+    system = (
+        "You are a helpful BWSSB water supply assistant answering citizen questions. "
+        "Use only the provided ward data. Be concise and direct (max 50 words). "
+        "Return JSON: { \"answer\": string }."
+    )
+    # Scope context to only relevant fields — not the full dataset
+    ctx = {
+        "ward": ward_context.get("name", "your ward"),
+        "supply_today": ward_context.get("supply_today"),
+        "supply_start": ward_context.get("supply_start_time", "N/A"),
+        "supply_end": ward_context.get("supply_end_time", "N/A"),
+        "days_since_supply": ward_context.get("days_since_supply"),
+        "open_issues": ward_context.get("open_issues", 0),
+    }
+    prompt = f"Ward info: {ctx}. Citizen question: {question}"
+    try:
+        response = await gemma.generate(system, prompt)
+        result = gemma.parse_json(response)
+        if "answer" not in result:
+            raise ValueError("missing answer")
+        return result
+    except Exception:
+        supply_msg = (
+            f"Supply is scheduled today from {ward_context.get('supply_start_time', 'N/A')} "
+            f"to {ward_context.get('supply_end_time', 'N/A')}."
+            if ward_context.get("supply_today")
+            else "No supply is scheduled for today in your ward."
+        )
+        return {"answer": f"{supply_msg} Please store water in advance and report issues through the portal."}
+
+
+# ---------------------------------------------------------------------------
+# NEW: Gemma AI — Issue Pattern Insights
+# ---------------------------------------------------------------------------
+async def issue_insights(issue_summary: list[dict]) -> dict:
+    """Generate a 2-3 sentence narrative insight for municipality staff."""
+    system = (
+        "You are a municipal operations analyst. Given a summary of recent water issues, "
+        "write a 2-sentence insight for staff. "
+        "Return JSON: { \"summary\": string }. Be specific and actionable."
+    )
+    prompt = f"Issue breakdown (type and count): {issue_summary}"
+    try:
+        response = await gemma.generate(system, prompt)
+        result = gemma.parse_json(response)
+        if "summary" not in result:
+            raise ValueError("missing summary")
+        return result
+    except Exception:
+        top = issue_summary[0] if issue_summary else {"type": "general", "count": 0}
+        return {
+            "summary": (
+                f"The most frequent issue type is '{top.get('type', 'general')}' with {top.get('count', 0)} reports. "
+                "Consider deploying additional field teams to high-complaint wards and scheduling preventive maintenance."
+            ),
+        }
