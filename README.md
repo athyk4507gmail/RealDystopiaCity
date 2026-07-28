@@ -42,8 +42,10 @@ pip install -r requirements.txt
 # Copy env (optional — SQLite works out of the box)
 cp .env.example .env
 
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 4010
 ```
+
+> **Note on Ports**: This project runs on port **3010** (frontend) and **4010** (backend) by default to avoid conflicts with other local projects. Override via `package.json` scripts or environment variables if needed.
 
 The backend uses **SQLite by default** (no Docker required). For PostgreSQL, use Docker:
 
@@ -56,14 +58,13 @@ docker compose up -d db
 
 ```bash
 cd frontend
-cp .env.local.example .env.local
-# Add NEXT_PUBLIC_MAPBOX_TOKEN to .env.local
+cp .env.example .env.local
 
 npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000)
+Open [http://localhost:3010](http://localhost:3010)
 
 ### AI Configuration
 
