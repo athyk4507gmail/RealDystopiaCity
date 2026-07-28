@@ -12,6 +12,7 @@ import LiveSourceBanner from "@/components/LiveSourceBanner";
 import LoadingSkeleton, { StatCardSkeleton } from "@/components/LoadingSkeleton";
 import DataError from "@/components/DataError";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { TiltCard } from "@/components/TiltCard";
 import clsx from "clsx";
 
 const STRESS_EVENTS = [
@@ -38,7 +39,7 @@ function VitalGauge({
   const changed = before !== undefined && before !== value;
 
   return (
-    <div className="rounded-xl border border-border p-4 text-center">
+    <div className="glass-panel text-center">
       <Icon className="w-6 h-6 mx-auto mb-2 text-accent" />
       <p className="text-xs text-slate-400 uppercase">{label}</p>
       <p className={clsx("text-3xl font-bold mt-1 gauge-pulse", color)}>
@@ -142,30 +143,32 @@ export default function MetabolismPage() {
 
   return (
     <ErrorBoundary fallbackTitle="Metabolism module failed to render">
-      <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">City Metabolism</h1>
-          <p className="text-slate-400 text-sm mt-1">Cross-system cascade intelligence — the city as one organism</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <DataSourceBadge type="estimated" detail="Cross-module synthesis and stress simulation" />
-            {liveTraffic && (
-              <LiveSourceBanner
-                source={liveTraffic.source}
-                sourceType={liveTraffic.sourceType}
-                stale={liveTraffic.stale}
-                cached={liveTraffic.cached}
-              />
-            )}
-            {liveAqi && (
-              <LiveSourceBanner
-                source={liveAqi.source}
-                sourceType={liveAqi.sourceType}
-                stale={liveAqi.stale}
-                cached={liveAqi.cached}
-              />
-            )}
+      <div className="page-panel">
+        <TiltCard>
+          <div className="mb-6">
+            <h1 className="page-title">City Metabolism</h1>
+            <p className="text-slate-400 text-sm mt-2">Cross-system cascade intelligence — the city as one organism</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <DataSourceBadge type="estimated" detail="Cross-module synthesis and stress simulation" />
+              {liveTraffic && (
+                <LiveSourceBanner
+                  source={liveTraffic.source}
+                  sourceType={liveTraffic.sourceType}
+                  stale={liveTraffic.stale}
+                  cached={liveTraffic.cached}
+                />
+              )}
+              {liveAqi && (
+                <LiveSourceBanner
+                  source={liveAqi.source}
+                  sourceType={liveAqi.sourceType}
+                  stale={liveAqi.stale}
+                  cached={liveAqi.cached}
+                />
+              )}
+            </div>
           </div>
-        </div>
+        </TiltCard>
 
         {loadError && <DataError message={loadError} onRetry={() => window.location.reload()} />}
         {(trafficError || aqiError) && (
@@ -191,7 +194,7 @@ export default function MetabolismPage() {
           </div>
         )}
 
-        <div className="rounded-xl border border-border p-4">
+        <div className="glass-panel">
           <h3 className="font-medium mb-4 flex items-center gap-2">
             <Activity className="w-5 h-5 text-accent" />
             Stress Test — Trigger Cascade Event
@@ -202,7 +205,7 @@ export default function MetabolismPage() {
                 key={event.id}
                 onClick={() => runStressTest(event.id)}
                 disabled={running}
-                className="rounded-lg border border-border p-4 hover:border-accent/30 hover:bg-accent/5 transition-colors disabled:opacity-50 text-center"
+                className="glass-input hover:border-accent/30 hover:bg-accent/5 transition-colors disabled:opacity-50 text-center cursor-pointer"
               >
                 <span className="text-2xl">{event.icon}</span>
                 <p className="text-sm font-medium mt-2">{event.label}</p>
@@ -212,14 +215,14 @@ export default function MetabolismPage() {
         </div>
 
         {running && (
-          <div className="rounded-xl border border-accent/30 p-4">
+          <div className="glass-panel border-accent/30">
             <p className="text-sm text-accent animate-pulse mb-4">Cascade propagating across city systems...</p>
             <div className="flex gap-4">
               {["water", "traffic", "energy", "air_quality"].map((node, i) => (
                 <div
                   key={node}
                   className={clsx(
-                    "cascade-node flex-1 rounded-lg border border-border p-3 text-center text-sm",
+                    "cascade-node flex-1 glass-input text-center text-sm",
                     activeStep > i && "cascade-active"
                   )}
                 >
@@ -231,13 +234,13 @@ export default function MetabolismPage() {
         )}
 
         <div className="grid grid-cols-2 gap-6">
-          <div className="rounded-xl border border-border overflow-hidden h-[350px]">
+          <div className="glass-panel overflow-hidden h-[350px]">
             <MapboxMap markers={cascadeMarkers} zoom={11} />
           </div>
 
           {stressResult ? (
             <div className="space-y-4">
-              <div className="rounded-xl border border-border p-4 text-center">
+              <div className="glass-panel text-center">
                 <p className="text-xs text-slate-400 uppercase">City Resilience Index</p>
                 <p className={clsx(
                   "text-5xl font-bold mt-2",

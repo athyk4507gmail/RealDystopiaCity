@@ -7,6 +7,7 @@ import MapboxMap from "@/components/MapboxMap";
 import ReasoningBox from "@/components/ReasoningBox";
 import StatCard from "@/components/StatCard";
 import DataSourceBadge from "@/components/DataSourceBadge";
+import { TiltCard } from "@/components/TiltCard";
 
 export default function RiskZonesPage() {
   const [timeline, setTimeline] = useState<TimelineWeek[]>([]);
@@ -79,35 +80,37 @@ export default function RiskZonesPage() {
   }));
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Driver Behavior Risk Zones</h1>
-          <p className="text-slate-400 text-sm mt-1">Predict accident-prone segments before crashes occur</p>
-          <div className="mt-2 flex gap-2">
-            <DataSourceBadge type="reported" detail="Publicly reported traffic black spots" />
-            <DataSourceBadge type="estimated" detail="AI-predicted risk zones from behavior signals" />
+    <div className="page-panel">
+      <TiltCard>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="page-title">Driver Behavior Risk Zones</h1>
+            <p className="text-slate-400 text-sm mt-2">Predict accident-prone segments before crashes occur</p>
+            <div className="mt-2 flex gap-2">
+              <DataSourceBadge type="reported" detail="Publicly reported traffic black spots" />
+              <DataSourceBadge type="estimated" detail="AI-predicted risk zones from behavior signals" />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPlaying(!playing)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium"
+            >
+              {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              {playing ? "Pause" : "Play Timeline"}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={4}
+              value={week}
+              onChange={(e) => setWeek(Number(e.target.value))}
+              className="w-32"
+            />
+            <span className="text-sm text-slate-400">Week {week + 1}</span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setPlaying(!playing)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-black text-sm font-medium"
-          >
-            {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            {playing ? "Pause" : "Play Timeline"}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={4}
-            value={week}
-            onChange={(e) => setWeek(Number(e.target.value))}
-            className="w-32"
-          />
-          <span className="text-sm text-slate-400">Week {week + 1}</span>
-        </div>
-      </div>
+      </TiltCard>
 
       <div className="grid grid-cols-4 gap-4">
         <StatCard label="Avg Risk" value={currentWeek?.avg_risk ?? "—"} color="yellow" sourceType="estimated" />
@@ -117,7 +120,7 @@ export default function RiskZonesPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-6">
-        <div className="rounded-xl border border-border overflow-hidden h-[450px]">
+        <div className="glass-panel overflow-hidden h-[450px]">
           <MapboxMap lines={lines} heatmapPoints={heatmapPoints} markers={blackSpotMarkers} zoom={11.5} />
         </div>
 
@@ -129,7 +132,7 @@ export default function RiskZonesPage() {
               <button
                 key={s.id}
                 onClick={() => explain(s.id)}
-                className="w-full text-left rounded-lg border border-border p-3 hover:border-accent/30 transition-colors"
+                className="w-full text-left glass-panel hover:border-accent/30 transition-colors"
               >
                 <div className="flex justify-between items-center">
                   <span className="font-medium text-sm">{s.name}</span>
@@ -152,13 +155,13 @@ export default function RiskZonesPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-border p-3 text-xs text-slate-300 flex items-center gap-4">
+      <div className="glass-panel text-xs text-slate-300 flex items-center gap-4">
         <span className="inline-flex items-center gap-1"><span className="reported-marker" /> Reported Black Spot</span>
         <span className="inline-flex items-center gap-1"><span className="car-marker" /> AI-Predicted Emerging Risk</span>
       </div>
 
       {explanation && (
-        <div className="rounded-xl border border-border p-4 space-y-3">
+        <div className="glass-panel space-y-3">
           <h3 className="font-medium">{explanation.segment.name} — Risk Analysis</h3>
           <ReasoningBox reasoning={explanation.explanation} />
           <p className="text-sm text-slate-400">Recommendation: {explanation.recommendation}</p>

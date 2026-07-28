@@ -13,6 +13,7 @@ import LiveSourceBanner from "@/components/LiveSourceBanner";
 import LoadingSkeleton, { StatCardSkeleton, MapSkeleton } from "@/components/LoadingSkeleton";
 import DataError from "@/components/DataError";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { TiltCard } from "@/components/TiltCard";
 
 function mergeEvents(backend: TrafficEvent[], live: CityEvent[] | null): TrafficEvent[] {
   if (!live?.length) return backend;
@@ -129,26 +130,28 @@ export default function TrafficMoodPage() {
 
   return (
     <ErrorBoundary fallbackTitle="Traffic mood module failed to render">
-      <div className="p-6 space-y-6">
+      <div className="page-panel">
         {error && <DataError message={error} onRetry={load} />}
         {liveError && <DataError message={liveError} onRetry={refreshLive} />}
 
-        <div>
-          <h1 className="text-2xl font-bold">AI Traffic Mood Predictor</h1>
-          <p className="text-slate-400 text-sm mt-1">Predict congestion from events sensors can&apos;t see</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <DataSourceBadge type="reported" detail="Real event signals and listings" />
-            <DataSourceBadge type="estimated" detail="Surge severity and timing predictions" />
-            {liveEvents?.[0] && (
-              <LiveSourceBanner
-                source={liveEvents[0].source}
-                sourceType={liveEvents[0].sourceType}
-                stale={liveEvents[0].stale}
-                cached={liveEvents[0].cached}
-              />
-            )}
+        <TiltCard>
+          <div className="mb-6">
+            <h1 className="page-title">AI Traffic Mood Predictor</h1>
+            <p className="text-slate-400 text-sm mt-2">Predict congestion from events sensors can&apos;t see</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <DataSourceBadge type="reported" detail="Real event signals and listings" />
+              <DataSourceBadge type="estimated" detail="Surge severity and timing predictions" />
+              {liveEvents?.[0] && (
+                <LiveSourceBanner
+                  source={liveEvents[0].source}
+                  sourceType={liveEvents[0].sourceType}
+                  stale={liveEvents[0].stale}
+                  cached={liveEvents[0].cached}
+                />
+              )}
+            </div>
           </div>
-        </div>
+        </TiltCard>
 
         <div className="grid grid-cols-4 gap-4">
           {loading || liveLoading ? (
@@ -169,7 +172,7 @@ export default function TrafficMoodPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-6">
-          <div className="rounded-xl border border-border overflow-hidden h-[450px] relative">
+          <div className="glass-panel overflow-hidden h-[450px] relative">
             {loading ? (
               <MapSkeleton className="h-full w-full" />
             ) : (
@@ -191,7 +194,7 @@ export default function TrafficMoodPage() {
               <p className="text-sm text-slate-400">No events available.</p>
             ) : (
               events.map((event) => (
-                <div key={event.id} className="rounded-lg border border-border p-3 space-y-2">
+                <div key={event.id} className="glass-panel space-y-2">
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-medium text-sm">{event.title}</p>
@@ -220,7 +223,7 @@ export default function TrafficMoodPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-border p-4">
+        <div className="glass-panel">
           <h3 className="font-medium mb-3">Surge Predictions</h3>
           {predictions.length === 0 ? (
             <LoadingSkeleton rows={3} />

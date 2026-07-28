@@ -31,6 +31,8 @@ export interface MapPolygon {
   fillColor?: string;
   fillOpacity?: number;
   lineColor?: string;
+  popup?: string;
+  onPolygonClick?: (polygon: MapPolygon) => void;
 }
 
 interface MapboxMapProps {
@@ -187,6 +189,26 @@ function MapboxMapInner({
             source: id,
             paint: { "line-color": poly.lineColor || "#06b6d4", "line-width": 2 },
           });
+
+          if (poly.popup || poly.onPolygonClick) {
+            map.on("click", `${id}-fill`, (e) => {
+              if (poly.onPolygonClick) {
+                poly.onPolygonClick(poly);
+              }
+              if (poly.popup) {
+                new mapboxgl.Popup({ offset: 15 })
+                  .setLngLat(e.lngLat)
+                  .setHTML(poly.popup)
+                  .addTo(map);
+              }
+            });
+            map.on("mouseenter", `${id}-fill`, () => {
+              map.getCanvas().style.cursor = "pointer";
+            });
+            map.on("mouseleave", `${id}-fill`, () => {
+              map.getCanvas().style.cursor = "";
+            });
+          }
         }
       });
 

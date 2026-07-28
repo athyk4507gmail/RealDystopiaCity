@@ -1,1 +1,1 @@
-{"data":{"lat":12.9716,"lng":77.5946,"temperatureC":24.3,"humidityPct":74,"rainProbabilityPct":0,"windSpeedKmh":14.6,"summary":"Overcast","source":"Open-Meteo Forecast API","sourceType":"live","fetchedAt":"2026-07-27T14:01:57.020Z","cached":false},"expiresAt":1785161517020}
+{"data":{"lat":12.9716,"lng":77.5946,"temperatureC":25.3,"humidityPct":67,"rainProbabilityPct":0,"windSpeedKmh":21.6,"summary":"Overcast","source":"Open-Meteo Forecast API","sourceType":"live","fetchedAt":"2026-07-28T13:16:56.689Z","cached":false},"expiresAt":1785245216689}

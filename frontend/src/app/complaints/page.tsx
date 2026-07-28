@@ -6,6 +6,7 @@ import DataSourceBadge from "@/components/DataSourceBadge";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import DataError from "@/components/DataError";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { TiltCard } from "@/components/TiltCard";
 import { formatDateTime, parseWardId } from "@/lib/validation";
 
 export default function ComplaintsPage() {
@@ -44,15 +45,17 @@ export default function ComplaintsPage() {
 
   return (
     <ErrorBoundary fallbackTitle="Complaints module failed to render">
-    <div className="p-6 space-y-6">
+    <div className="page-panel">
       {error && <DataError message={error} onRetry={load} />}
-      <div>
-        <h1 className="text-2xl font-bold">Water Complaints</h1>
-        <p className="text-slate-400 text-sm mt-1">Simulated citizen reports across all wards</p>
-        <div className="mt-2">
-          <DataSourceBadge type="estimated" detail="Simulated citizen reports" />
+      <TiltCard>
+        <div className="mb-6">
+          <h1 className="page-title">Water Complaints</h1>
+          <p className="text-slate-400 text-sm mt-2">Simulated citizen reports across all wards</p>
+          <div className="mt-2">
+            <DataSourceBadge type="estimated" detail="Simulated citizen reports" />
+          </div>
         </div>
-      </div>
+      </TiltCard>
 
       <div className="flex flex-wrap gap-4">
         <div>
@@ -60,7 +63,7 @@ export default function ComplaintsPage() {
           <select
             value={wardFilter}
             onChange={(e) => setWardFilter(e.target.value)}
-            className="block mt-1 bg-white/5 border border-border rounded-lg px-3 py-2 text-sm min-w-[180px]"
+            className="block mt-1 glass-select px-3 py-2 text-sm min-w-[180px]"
           >
             <option value="all">All Wards</option>
             {wards.map((w) => (
@@ -73,7 +76,7 @@ export default function ComplaintsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="block mt-1 bg-white/5 border border-border rounded-lg px-3 py-2 text-sm min-w-[140px]"
+            className="block mt-1 glass-select px-3 py-2 text-sm min-w-[140px]"
           >
             <option value="all">All Statuses</option>
             <option value="open">Open</option>
@@ -82,7 +85,7 @@ export default function ComplaintsPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-border overflow-hidden">
+      <div className="glass-panel overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-white/5">
             <tr>

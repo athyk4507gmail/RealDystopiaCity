@@ -13,6 +13,7 @@ import LiveSourceBanner from "@/components/LiveSourceBanner";
 import LoadingSkeleton, { StatCardSkeleton, MapSkeleton } from "@/components/LoadingSkeleton";
 import DataError from "@/components/DataError";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { TiltCard } from "@/components/TiltCard";
 
 export default function TrafficPage() {
   const [feed, setFeed] = useState<TrafficFeedItem[]>([]);
@@ -121,42 +122,44 @@ export default function TrafficPage() {
 
   return (
     <ErrorBoundary fallbackTitle="Traffic module failed to render">
-      <div className="p-6 space-y-6">
+      <div className="page-panel">
         {error && <DataError message={error} onRetry={load} />}
         {liveError && <DataError message={liveError} onRetry={refreshLive} />}
 
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">AI Smart Traffic Management</h1>
-            <p className="text-slate-400 text-sm mt-1">Live monitoring, signal optimization, and emergency corridors</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <DataSourceBadge type="live" detail="Current congestion baseline" />
-              <DataSourceBadge type="estimated" detail="Signal recommendations and corridor logic" />
-              {liveTraffic && (
-                <LiveSourceBanner
-                  source={liveTraffic.source}
-                  sourceType={liveTraffic.sourceType}
-                  stale={liveTraffic.stale}
-                  cached={liveTraffic.cached}
-                />
-              )}
+        <TiltCard>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="page-title">AI Smart Traffic Management</h1>
+              <p className="text-slate-400 text-sm mt-2">Live monitoring, signal optimization, and emergency corridors</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <DataSourceBadge type="live" detail="Current congestion baseline" />
+                <DataSourceBadge type="estimated" detail="Signal recommendations and corridor logic" />
+                {liveTraffic && (
+                  <LiveSourceBanner
+                    source={liveTraffic.source}
+                    sourceType={liveTraffic.sourceType}
+                    stale={liveTraffic.stale}
+                    cached={liveTraffic.cached}
+                  />
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={triggerAmbulance}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm hover:bg-red-500/30"
+              >
+                <Ambulance className="w-4 h-4" /> Ambulance Green Corridor
+              </button>
+              <button
+                onClick={getAltRoutes}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 text-sm hover:bg-white/10"
+              >
+                <Route className="w-4 h-4" /> Alt Routes
+              </button>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={triggerAmbulance}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm hover:bg-red-500/30"
-            >
-              <Ambulance className="w-4 h-4" /> Ambulance Green Corridor
-            </button>
-            <button
-              onClick={getAltRoutes}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 text-sm hover:bg-white/10"
-            >
-              <Route className="w-4 h-4" /> Alt Routes
-            </button>
-          </div>
-        </div>
+        </TiltCard>
 
         <div className="grid grid-cols-4 gap-4">
           {loading || liveLoading ? (
@@ -183,7 +186,7 @@ export default function TrafficPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-6">
-          <div className="rounded-xl border border-border overflow-hidden h-[450px]">
+          <div className="glass-panel overflow-hidden h-[450px]">
             {loading ? (
               <MapSkeleton className="h-full w-full" />
             ) : (
@@ -198,7 +201,7 @@ export default function TrafficPage() {
               <p className="text-sm text-slate-400">No signal recommendations available.</p>
             ) : (
               recommendations.map((rec) => (
-                <div key={rec.signal_id} className="rounded-lg border border-border p-3 space-y-2">
+                <div key={rec.signal_id} className="glass-panel space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="font-medium text-sm">{rec.signal_name}</span>
                     <span className="text-xs text-accent">
@@ -227,7 +230,7 @@ export default function TrafficPage() {
         )}
 
         {altRoutes.length > 0 && (
-          <div className="rounded-xl border border-border p-4 space-y-3">
+          <div className="glass-panel space-y-3">
             <h3 className="font-medium">Alternative Routes</h3>
             {altRoutes.map((r) => (
               <div key={r.route} className="rounded-lg bg-white/5 p-3">

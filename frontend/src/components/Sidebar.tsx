@@ -28,10 +28,10 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 shrink-0 border-r border-border bg-card flex flex-col">
+    <aside className="sidebar w-64 shrink-0 border-r border-border bg-[#141416] flex flex-col">
       <div className="p-5 border-b border-border">
         <div className="flex items-center gap-2">
-          <Zap className="w-6 h-6 text-accent" />
+          <Zap className="w-6 h-6 text-accent logo-icon" />
           <div>
             <h1 className="font-bold text-lg leading-tight">CityPulse AI</h1>
             <p className="text-xs text-slate-400">Sustainable City Intelligence</p>
@@ -48,9 +48,9 @@ export default function Sidebar() {
               key={mod.href}
               href={mod.href}
               className={clsx(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
+                "nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
                 active
-                  ? "bg-accent/10 text-accent border border-accent/20"
+                  ? "nav-item-active bg-accent/10 text-accent border border-accent/20"
                   : "text-slate-400 hover:text-foreground hover:bg-white/5"
               )}
             >

@@ -14,7 +14,7 @@ export default function DataError({ message, onRetry, className }: DataErrorProp
     <div
       role="alert"
       className={clsx(
-        "flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300",
+        "error-banner flex items-start gap-3 rounded-lg border border-[#f87171]/35 bg-[#f87171]/[0.08] p-4 text-sm text-[#fca5a5]",
         className,
       )}
     >

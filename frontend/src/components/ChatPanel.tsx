@@ -56,7 +56,7 @@ export default function ChatPanel({ module }: { module: string }) {
       </button>
 
       {open && (
-        <div className="fixed bottom-6 right-6 z-50 w-96 h-[500px] flex flex-col rounded-xl border border-border bg-card shadow-2xl">
+        <div className="fixed bottom-6 right-6 z-50 w-96 h-[500px] flex flex-col glass-panel shadow-2xl">
           <div className="flex items-center justify-between p-4 border-b border-border">
             <div>
               <h3 className="font-semibold text-sm">Ask CityPulse AI</h3>

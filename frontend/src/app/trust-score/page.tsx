@@ -7,6 +7,7 @@ import { api, BusRoute, RouteRecommendation } from "@/lib/api";
 import ReasoningBox from "@/components/ReasoningBox";
 import StatCard from "@/components/StatCard";
 import DataSourceBadge from "@/components/DataSourceBadge";
+import { TiltCard } from "@/components/TiltCard";
 
 export default function TrustScorePage() {
   const [routes, setRoutes] = useState<BusRoute[]>([]);
@@ -37,15 +38,17 @@ export default function TrustScorePage() {
     : "—";
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Public Transport Trust Score</h1>
-        <p className="text-slate-400 text-sm mt-1">Reliability predictions to keep commuters on buses</p>
-        <div className="mt-2 flex gap-2">
-          <DataSourceBadge type="reported" detail="Real route names/stops from transit structure" />
-          <DataSourceBadge type="estimated" detail="Delay variance and trust score modeling" />
+    <div className="page-panel">
+      <TiltCard>
+        <div className="mb-6">
+          <h1 className="page-title">Public Transport Trust Score</h1>
+          <p className="text-slate-400 text-sm mt-2">Reliability predictions to keep commuters on buses</p>
+          <div className="mt-2 flex gap-2">
+            <DataSourceBadge type="reported" detail="Real route names/stops from transit structure" />
+            <DataSourceBadge type="estimated" detail="Delay variance and trust score modeling" />
+          </div>
         </div>
-      </div>
+      </TiltCard>
 
       <div className="grid grid-cols-4 gap-4">
         <StatCard label="Routes Tracked" value={routes.length} color="cyan" sourceType="reported" />
@@ -85,7 +88,7 @@ export default function TrustScorePage() {
         </div>
       )}
 
-      <div className="rounded-xl border border-border overflow-hidden">
+      <div className="glass-panel overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-white/5">
             <tr>
@@ -135,7 +138,7 @@ export default function TrustScorePage() {
         </table>
       </div>
 
-      <div className="rounded-xl border border-border p-4">
+      <div className="glass-panel">
         <h3 className="font-medium mb-3">Trust Score Leaderboard</h3>
         <ResponsiveContainer width="100%" height={250}>
           <BarChart data={routes} layout="vertical">
