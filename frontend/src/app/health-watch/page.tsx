@@ -354,7 +354,7 @@ function WardDetailContent({ ward }: { ward: HealthWatchWard }) {
                 key={cat}
                 className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300"
               >
-                {cat.replace(/_/g, " ")} ×{cnt}
+                {cat.replace(/_/g, " ")} ×{String(cnt)}
               </span>
             ))}
           </div>

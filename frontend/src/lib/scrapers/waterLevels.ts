@@ -121,10 +121,12 @@ async function scrapeCwcBulletin(): Promise<WaterLevelReading> {
   let capacityPct: number | null = null;
   let lastUpdated: string | null = null;
 
-  $("table tr").each((_, row) => {
-    const cells = $(row)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  $("table tr").each(function (this: any) {
+    const cells = $(this)
       .find("td, th")
-      .map((__, cell) => $(cell).text().trim())
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map(function (this: any) { return $(this).text().trim(); })
       .get();
 
     const rowText = cells.join(" ").toLowerCase();

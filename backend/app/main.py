@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import Base, SessionLocal, engine, migrate_schema
-from app.routers import chat, complaints, integrations, metabolism, risk_zones, traffic, traffic_mood, traffic_management, trust_score, water
+from app.routers import chat, complaints, health_watch, integrations, metabolism, risk_zones, traffic, traffic_mood, traffic_management, trust_score, water
 from app.seed.data import seed_database
 from app.services.gemma import explain_live_camera
 from app.services.live_camera import live_camera_background_loop
@@ -63,6 +63,7 @@ app.include_router(traffic_mood.router)
 app.include_router(traffic.router)
 app.include_router(traffic_management.router)
 app.include_router(metabolism.router)
+app.include_router(health_watch.router)
 app.include_router(chat.router)
 app.include_router(integrations.router)
 

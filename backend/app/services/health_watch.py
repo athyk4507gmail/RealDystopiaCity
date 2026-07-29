@@ -34,7 +34,42 @@ from sqlalchemy.orm import Session
 from app.models import Ward
 from app.services.data_sources import DataTier, source_badge
 from app.services.gemma import gemma
-from app.services.weather import get_live_weather
+
+# ---------------------------------------------------------------------------
+# Weather helper — this codebase does not have app.services.weather.
+# Instead we call the integrations endpoint (same OpenWeather data, just
+# routed through the existing integrations router) or fall back to the
+# ward's stored temperature_c.
+# ---------------------------------------------------------------------------
+
+async def _get_weather_for_ward(lat: float, lng: float) -> dict:
+    """
+    Fetch live weather for a ward coordinate via the integrations endpoint.
+    Falls back to estimated values if the call fails.
+    Returns: { temp_c, humidity, rain_mm, source_type }
+    """
+    try:
+        async with httpx.AsyncClient(timeout=6) as client:
+            resp = await client.get(
+                "http://localhost:8000/api/integrations/weather",
+                params={"lat": lat, "lng": lng},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            current = data.get("current") or {}
+            return {
+                "temp_c":   current.get("temperature_c"),
+                "humidity": current.get("humidity_pct"),
+                "rain_mm":  0.0,   # integrations endpoint provides forecast, not rolling 7d
+                "source_type": data.get("source_type", "estimated"),
+            }
+    except Exception:
+        return {
+            "temp_c":   None,
+            "humidity": None,
+            "rain_mm":  0.0,
+            "source_type": "estimated",
+        }
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -532,14 +567,14 @@ async def compute_ward_health(
     `metabolism` is the shared result from get_metabolism_stress() — fetched
     once per refresh cycle and passed in to avoid N+1 HTTP calls.
     """
-    # 1. Weather
+    # 1. Weather — via integrations endpoint (no app.services.weather in this codebase)
     try:
-        weather = await get_live_weather(ward.lat, ward.lng)
-        temp_c    = weather.get("temp_c") or ward.temperature_c
-        humidity  = weather.get("humidity")
-        rainfall  = weather.get("rain_next_hour_mm", 0.0) or 0.0
-        wx_source = DataTier.LIVE if weather.get("source_type") == "live" else DataTier.ESTIMATED
-        wx_detail = weather.get("source_detail", "OpenWeatherMap")
+        wx = await _get_weather_for_ward(ward.lat, ward.lng)
+        temp_c    = wx.get("temp_c") or ward.temperature_c
+        humidity  = wx.get("humidity")
+        rainfall  = wx.get("rain_mm", 0.0) or 0.0
+        wx_source = DataTier.LIVE if wx.get("source_type") == "live" else DataTier.ESTIMATED
+        wx_detail = "OpenWeatherMap via integrations"
     except Exception:
         temp_c    = ward.temperature_c
         humidity  = None

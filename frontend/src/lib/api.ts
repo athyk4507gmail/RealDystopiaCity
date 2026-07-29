@@ -112,6 +112,12 @@ export const api = {
     stressTest: (event: string) =>
       fetchApi<StressTestResult>(`/api/metabolism/stress-test/${event}`, { method: "POST" }),
   },
+  healthWatch: {
+    wards: () => fetchApi<HealthWatchWard[]>("/api/health-watch/wards"),
+    wardDetail: (wardId: number) => fetchApi<HealthWatchWardDetail>(`/api/health-watch/wards/${wardId}`),
+    refresh: () => fetchApi<HealthWatchRefreshResult>("/api/health-watch/refresh", { method: "POST" }),
+    cacheStatus: () => fetchApi<{ today: string; warmed_ward_ids: number[] }>("/api/health-watch/cache-status"),
+  },
   integrations: {
     weather: (lat: number, lng: number) => fetchApi<WeatherPayload>(`/api/integrations/weather?lat=${lat}&lng=${lng}`),
     locations: (city?: string) =>
@@ -442,4 +448,117 @@ export interface JunctionCaptureResult {
   vehicle_count: number;
   detections: DetectionBox[];
   timestamp: string;
+}
+
+// ---------------------------------------------------------------------------
+// Health Watch
+// ---------------------------------------------------------------------------
+
+export type HealthWatchTrend      = "up" | "down" | "flat";
+export type HealthWatchSourceType = "live" | "reported" | "estimated" | "simulated";
+
+export interface HealthWatchSourceBadge {
+  source_type:   HealthWatchSourceType;
+  source_label:  string;
+  source_detail: string;
+}
+
+export interface HealthWatchScoreComponent {
+  raw_value:    number | null;
+  normalised:   number;
+  weighted:     number;
+  weight:       number;
+  ceiling?:     number;
+  // heat_index only
+  anomaly_c?:       number;
+  ceiling_anomaly?: number;
+  // metabolism_stress only
+  stress_input?: number;
+}
+
+export interface HealthWatchScoring {
+  score:     number;
+  score_raw: number;
+  components: {
+    stagnant_reports:  HealthWatchScoreComponent;
+    heat_index:        HealthWatchScoreComponent;
+    complaint_density: HealthWatchScoreComponent;
+    metabolism_stress: HealthWatchScoreComponent;
+  };
+  weights: Record<string, number>;
+  formula: string;
+}
+
+export interface HealthWatchFeatures {
+  stagnant_reports_7d:             number;
+  temp_c:                          number;
+  temp_anomaly_c:                  number;
+  humidity_pct:                    number | null;
+  rainfall_7d_mm:                  number;
+  complaint_count_7d:              number;
+  complaint_categories:            Record<string, number>;
+  metabolism_water_delta_pct:      number;
+  metabolism_water_pressure_pct:   number;
+}
+
+export interface HealthWatchMetabolismLink {
+  active_stress_test: string | null;
+  water_supply_delta: number;
+  water_pressure_pct: number;
+  detail:             string;
+  source_type:        HealthWatchSourceType;
+  source_label:       string;
+  source_detail:      string;
+}
+
+export interface HealthWatchTrendPoint {
+  date:  string;
+  score: number;
+}
+
+export interface HealthWatchGemma {
+  explanation:      string;
+  intervention:     string;
+  generated_at:     string;
+  gemma_elapsed_ms?: number;
+  prompts_debug: {
+    causal_system:       string;
+    causal_user:         string;
+    intervention_system: string;
+    intervention_user:   string;
+  };
+}
+
+/** Returned by GET /api/health-watch/wards (list — no Gemma) */
+export interface HealthWatchWard {
+  ward_id:   number;
+  ward_name: string;
+  lat:       number;
+  lng:       number;
+  risk_score:   number;
+  trend:        HealthWatchTrend;
+  trend_series: HealthWatchTrendPoint[];
+  scoring:      HealthWatchScoring;
+  features:     HealthWatchFeatures;
+  metabolism_link: HealthWatchMetabolismLink;
+  source_badges: {
+    weather:          HealthWatchSourceBadge;
+    stagnant_reports: HealthWatchSourceBadge;
+    complaints:       HealthWatchSourceBadge;
+    metabolism:       HealthWatchSourceBadge;
+  };
+  gemma: null;
+}
+
+/** Returned by GET /api/health-watch/wards/{id} (full detail + Gemma) */
+export interface HealthWatchWardDetail extends Omit<HealthWatchWard, "gemma"> {
+  gemma:       HealthWatchGemma | null;
+  gemma_error: string | null;
+}
+
+export interface HealthWatchRefreshResult {
+  refreshed_at:    string;
+  wards_computed:  number;
+  trending_up:     number;
+  high_risk_wards: number;
 }

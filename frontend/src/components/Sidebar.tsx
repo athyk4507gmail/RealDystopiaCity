@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  HeartPulse,
   Droplets,
   Bus,
   AlertTriangle,
@@ -28,6 +29,7 @@ const modules = [
   { href: "/junction-x", label: "Junction X", icon: Crosshair, color: "text-amber-400" },
   { href: "/dystopia", label: "Dystopia", icon: Skull, color: "text-rose-400" },
   { href: "/metabolism", label: "City Metabolism", icon: Activity, color: "text-emerald-400" },
+  { href: "/health-watch", label: "Health Watch", icon: HeartPulse, color: "text-rose-400" },
 ];
 
 export default function Sidebar() {
