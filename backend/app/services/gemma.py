@@ -118,9 +118,9 @@ class GemmaService:
                 "longer red phases to reduce inflow into congested areas while those junctions clear."
             )
         return (
-            json.dumps({"response": "CityPulse AI is operating in offline mode. Configure GOOGLE_API_KEY or Ollama for live Gemma 4 responses."})
+            json.dumps({"response": "DystopiaCITY is operating in offline mode. Configure GOOGLE_API_KEY or Ollama for live Gemma 4 responses."})
             if json_mode
-            else "CityPulse AI offline mode: configure GOOGLE_API_KEY or Ollama for live Gemma 4."
+            else "DystopiaCITY offline mode: configure GOOGLE_API_KEY or Ollama for live Gemma 4."
         )
 
     def _water_fallback(self, user_prompt: str) -> dict:

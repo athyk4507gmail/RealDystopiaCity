@@ -7,7 +7,12 @@ import json
 from app.services.vision import count_vehicles
 from app.services.signal_logic import compute_signal_durations
 from app.services.gemma import explain_traffic_management
-from app.services.live_camera import get_live_camera_state
+from app.services.live_camera import (
+    LIVE_CAMERAS,
+    get_all_live_cameras_state,
+    get_legacy_live_camera_state,
+    get_live_camera_state,
+)
 
 router = APIRouter(prefix="/api/traffic-management", tags=["traffic-management"])
 
@@ -110,7 +115,24 @@ async def get_live_state():
 @router.get("/live-camera")
 async def get_live_camera():
     """
-    Returns the latest live public camera detection state, signal timing,
-    and Gemma explanation. Updated continuously by the background fetch loop.
+    Returns the primary (North / Camera A) live camera state plus Gemma explanation.
+    Backward-compatible with the original single-camera demo.
     """
-    return get_live_camera_state()
+    return get_legacy_live_camera_state()
+
+
+@router.get("/live-cameras")
+async def get_live_cameras():
+    """
+    Returns all four road-assigned Caltrans camera states (North/East/South/West).
+    Updated continuously by the background fetch loop.
+    """
+    return get_all_live_cameras_state()
+
+
+@router.get("/live-camera/{camera_id}")
+async def get_live_camera_by_id(camera_id: str):
+    """Single camera by id: north, east, south, or west."""
+    if camera_id not in LIVE_CAMERAS:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    return get_live_camera_state(camera_id)

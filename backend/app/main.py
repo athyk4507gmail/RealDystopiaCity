@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="CityPulse AI",
+    title="DystopiaCITY",
     description="Unified intelligence platform for sustainable cities",
     version="1.0.0",
     lifespan=lifespan,
@@ -73,7 +73,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 def health():
     return {
         "status": "ok",
-        "platform": "CityPulse AI",
+        "platform": "DystopiaCITY",
         "gemma_model": settings.gemma_model_id,
         "ai_mode": "live" if settings.google_api_key else "fallback",
     }

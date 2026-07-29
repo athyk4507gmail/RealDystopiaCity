@@ -9,23 +9,24 @@ import { useEffect } from "react";
 import { Camera, Play, Skull, Square } from "lucide-react";
 import {
   BASE_GREEN,
-  CAMERA_DRIVEN_ROAD,
+  CAMERA_DRIVEN_ROADS,
   CANVAS,
   DYSTOPIA_ROADS,
   MAX_GREEN,
   MIN_GREEN,
   PER_VEHICLE_SECONDS,
+  type Road,
   useDystopia,
 } from "@/dystopia/DystopiaProvider";
 
 export default function DystopiaPage() {
   const {
     running,
-    simulateOffline,
-    setSimulateOffline,
+    simulateOfflineRoad,
+    setSimulateOfflineRoad,
     log,
     snapshot,
-    camera,
+    cameras,
     start,
     stop,
     registerCanvas,
@@ -50,9 +51,11 @@ export default function DystopiaPage() {
             )}
           </div>
           <p className="text-sm text-slate-400 mt-1 max-w-2xl">
-            Camera-driven junction — North tracks the live Caltrans vehicle count;
-            East, South, and West run continuous simulated traffic. Simulation keeps
-            running if you leave this page; only Stop halts it.
+            Camera-driven junction — all four approaches track live Caltrans vehicle
+            counts from D8 I-10 cameras. Each road spawns traffic when its camera
+            count rises; simulated traffic is per-road fallback only when a feed
+            goes offline. Simulation keeps running if you leave this page; only
+            Stop halts it.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -75,14 +78,22 @@ export default function DystopiaPage() {
               Stop
             </button>
           )}
-          <label className="inline-flex items-center gap-2 text-xs text-slate-400 border border-border rounded-lg px-3 py-2 cursor-pointer hover:bg-white/5">
-            <input
-              type="checkbox"
-              checked={simulateOffline}
-              onChange={(e) => setSimulateOffline(e.target.checked)}
-              className="accent-rose-500"
-            />
-            Simulate camera offline
+          <label className="inline-flex items-center gap-2 text-xs text-slate-400 border border-border rounded-lg px-3 py-2">
+            <span>Simulate offline:</span>
+            <select
+              value={simulateOfflineRoad ?? ""}
+              onChange={(e) =>
+                setSimulateOfflineRoad((e.target.value || null) as Road | null)
+              }
+              className="bg-transparent text-slate-200 outline-none"
+            >
+              <option value="">None</option>
+              {DYSTOPIA_ROADS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       </div>
@@ -101,24 +112,31 @@ export default function DystopiaPage() {
           <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-4 space-y-3">
             <div className="flex items-center gap-2 text-cyan-300">
               <Camera className="w-4 h-4" />
-              <span className="text-sm font-semibold">Live camera → North</span>
+              <span className="text-sm font-semibold">Live cameras → all roads</span>
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <div className="text-xs text-slate-500">VEHICLES DETECTED</div>
-                <div className="text-2xl font-bold tabular-nums text-cyan-200">
-                  {camera.available ? (camera.vehicleCount ?? "—") : "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">NORTH QUEUE</div>
-                <div className="text-2xl font-bold tabular-nums">{snapshot.queues.North}</div>
-              </div>
-              <div className="col-span-2 text-xs text-slate-400">
-                {camera.available
-                  ? `Live · polling every ${pollIntervalMs / 1000}s (same cache as Command Signal)`
-                  : `Fallback mode${camera.error ? ` — ${camera.error}` : ""}`}
-              </div>
+              {DYSTOPIA_ROADS.map((road) => {
+                const feed = cameras.feedsByRoad[road];
+                const offline = simulateOfflineRoad === road;
+                return (
+                  <div
+                    key={road}
+                    className="rounded-lg border border-cyan-500/20 bg-cyan-950/30 px-3 py-2"
+                  >
+                    <div className="text-xs text-slate-500">{road.toUpperCase()}</div>
+                    <div className="text-xl font-bold tabular-nums text-cyan-200">
+                      {feed.available && !offline ? (feed.vehicleCount ?? "—") : "—"}
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      queue {snapshot.queues[road]}
+                      {offline ? " · simulated" : feed.available ? " · live" : " · fallback"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="text-xs text-slate-400">
+              Polling every {pollIntervalMs / 1000}s (shared cache with Command Signal)
             </div>
           </div>
 
@@ -129,15 +147,14 @@ export default function DystopiaPage() {
                 <div
                   key={r}
                   className={`rounded-lg border px-3 py-2 ${
-                    r === CAMERA_DRIVEN_ROAD
+                    CAMERA_DRIVEN_ROADS.includes(r)
                       ? "border-cyan-500/40 bg-cyan-950/30"
                       : "border-border"
                   }`}
                 >
                   <div className="flex justify-between gap-2">
-                    <span className={r === CAMERA_DRIVEN_ROAD ? "text-cyan-300" : ""}>
-                      {r}
-                      {r === CAMERA_DRIVEN_ROAD ? " 🎥" : ""}
+                    <span className="text-cyan-300">
+                      {r} 🎥
                     </span>
                     <span
                       className={

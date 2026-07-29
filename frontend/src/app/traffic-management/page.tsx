@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Camera, Radio, TrafficCone } from "lucide-react";
 import {
   api,
-  LiveCameraState,
   TrafficManagementLiveState,
   DetectionBox,
 } from "@/lib/api";
@@ -13,6 +12,8 @@ import StatCard from "@/components/StatCard";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import DataError from "@/components/DataError";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { CAMERA_IDS, type RoadCameraFeed } from "@/hooks/useLiveCameraVehicleCount";
+import { useLiveCamerasContext } from "@/providers/LiveCamerasProvider";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const POLL_INTERVAL_MS = 30_000;
@@ -85,46 +86,17 @@ function DetectionOverlay({
   );
 }
 
-function LiveCameraDemo() {
-  const [data, setData] = useState<LiveCameraState | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  // Client-side clock of last successful poll — used only for the live "Xs ago" counter.
-  const [lastFetchAtMs, setLastFetchAtMs] = useState<number | null>(null);
+function LiveCameraCard({ feed, showExplanation }: { feed: RoadCameraFeed; showExplanation?: boolean }) {
   const [secondsSinceFetch, setSecondsSinceFetch] = useState(0);
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastFetchAtMsRef = useRef<number | null>(null);
+  const lastFetchAtMsRef = useRef<number | null>(feed.updatedAtMs);
 
-  const load = useCallback(async () => {
-    try {
-      const result = await api.trafficManagement.liveCamera();
-      setData(result);
-      setError(result.fetch_error ?? null);
-      // Reset counter from the moment OUR frontend got a successful response,
-      // not from backend UTC timestamps (which lack timezone and skew into hours).
-      const now = Date.now();
-      lastFetchAtMsRef.current = now;
-      setLastFetchAtMs(now);
-      setSecondsSinceFetch(0);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load live camera");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Data poll interval only — does not drive the seconds-ago text.
   useEffect(() => {
-    load();
-    pollRef.current = setInterval(load, POLL_INTERVAL_MS);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [load]);
+    lastFetchAtMsRef.current = feed.updatedAtMs;
+    if (feed.updatedAtMs != null) setSecondsSinceFetch(0);
+  }, [feed.updatedAtMs]);
 
-  // Lightweight 1s UI tick — recomputes "Xs ago" only; never sets loading/skeleton.
   useEffect(() => {
     tickRef.current = setInterval(() => {
       const last = lastFetchAtMsRef.current;
@@ -136,9 +108,12 @@ function LiveCameraDemo() {
     };
   }, []);
 
+  const data = feed.raw;
+  const loading = !data && !feed.error;
+  const error = feed.error;
   const vehicleDetections = data?.detections.filter((d) => VEHICLE_CLASSES.has(d.class)) ?? [];
   const personDetections = data?.detections.filter((d) => d.class === "person") ?? [];
-  const cacheBust = lastFetchAtMs ?? data?.image_last_updated ?? 0;
+  const cacheBust = feed.updatedAtMs ?? data?.image_last_updated ?? 0;
 
   return (
     <section className="rounded-xl border border-cyan-500/30 bg-gradient-to-br from-cyan-950/40 to-card p-5 space-y-4">
@@ -146,11 +121,17 @@ function LiveCameraDemo() {
         <div>
           <div className="flex items-center gap-2">
             <Camera className="w-5 h-5 text-cyan-400" />
-            <h2 className="text-lg font-semibold">Live Public Camera Demo</h2>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-xs text-red-300">
-              <span className="h-2 w-2 rounded-full bg-red-400 animate-pulse" />
-              Live
-            </span>
+            <h2 className="text-lg font-semibold">{feed.label}</h2>
+            {feed.available ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-xs text-red-300">
+                <span className="h-2 w-2 rounded-full bg-red-400 animate-pulse" />
+                Live
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-500/40 bg-slate-500/10 px-2 py-0.5 text-xs text-slate-400">
+                Offline
+              </span>
+            )}
           </div>
           <p className="text-sm text-slate-400 mt-1">
             Live feed: {data?.camera_source ?? "Caltrans District 8, California"}
@@ -163,20 +144,20 @@ function LiveCameraDemo() {
         )}
       </div>
 
-      {loading && !data ? (
+      {loading ? (
         <LoadingSkeleton rows={4} />
       ) : error && !data ? (
-        <DataError message={error} onRetry={load} />
+        <DataError message={error} />
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="relative overflow-hidden rounded-lg border border-border bg-black/40 aspect-video">
-              {data?.annotated_image_url && (
+              {data?.annotated_image_url && feed.available && (
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`${API_BASE}${data.annotated_image_url}?t=${encodeURIComponent(String(cacheBust))}`}
-                    alt="Live Caltrans highway camera"
+                    alt={`Live Caltrans camera — ${feed.road}`}
                     className="h-full w-full object-contain"
                     onLoad={(e) => {
                       const img = e.currentTarget;
@@ -189,6 +170,11 @@ function LiveCameraDemo() {
                     naturalHeight={imgSize.h}
                   />
                 </>
+              )}
+              {!feed.available && (
+                <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                  Camera feed unavailable
+                </div>
               )}
             </div>
 
@@ -233,7 +219,7 @@ function LiveCameraDemo() {
 
               <p className="text-xs text-slate-500">
                 Last updated:{" "}
-                {lastFetchAtMs != null ? (
+                {feed.updatedAtMs != null ? (
                   <span className="text-cyan-400">{secondsSinceFetch}s ago</span>
                 ) : (
                   "waiting for first fetch…"
@@ -243,7 +229,7 @@ function LiveCameraDemo() {
             </div>
           </div>
 
-          {data?.explanation && (
+          {showExplanation && data?.explanation && (
             <ReasoningBox reasoning={data.explanation} title="Signal Explanation" />
           )}
 
@@ -253,6 +239,29 @@ function LiveCameraDemo() {
         </>
       )}
     </section>
+  );
+}
+
+function LiveCameraStack() {
+  const { feeds, loading, refresh, pollIntervalMs } = useLiveCamerasContext();
+
+  if (loading && !feeds.north.raw) {
+    return <LoadingSkeleton rows={6} />;
+  }
+
+  return (
+    <div className="space-y-6">
+      {CAMERA_IDS.map((id) => (
+        <LiveCameraCard key={id} feed={feeds[id]} showExplanation={id === "north"} />
+      ))}
+      <p className="text-xs text-slate-500 text-center">
+        Four Caltrans D8 I-10 cameras · shared {pollIntervalMs / 1000}s poll
+        {" · "}
+        <button type="button" onClick={refresh} className="text-cyan-400 hover:underline">
+          Refresh now
+        </button>
+      </p>
+    </div>
   );
 }
 
@@ -323,11 +332,11 @@ export default function TrafficManagementPage() {
             <h1 className="text-2xl font-bold">Command Signal</h1>
           </div>
           <p className="text-slate-400 mt-1">
-            Vision-driven traffic signal intelligence — live public camera demo plus Bengaluru junction grid
+            Vision-driven traffic signal intelligence — four live Caltrans cameras plus Bengaluru junction grid
           </p>
         </div>
 
-        <LiveCameraDemo />
+        <LiveCameraStack />
         <JunctionGridSection />
       </div>
     </ErrorBoundary>

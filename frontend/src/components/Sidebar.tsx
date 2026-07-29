@@ -39,7 +39,7 @@ export default function Sidebar() {
         <div className="flex items-center gap-2">
           <Zap className="w-6 h-6 text-accent" />
           <div>
-            <h1 className="font-bold text-lg leading-tight">CityPulse AI</h1>
+            <h1 className="font-bold text-lg leading-tight">DystopiaCITY</h1>
             <p className="text-xs text-slate-400">Sustainable City Intelligence</p>
           </div>
         </div>

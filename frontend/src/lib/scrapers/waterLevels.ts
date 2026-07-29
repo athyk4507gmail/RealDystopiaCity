@@ -108,7 +108,7 @@ async function fetchFromDataGovIn(apiKey: string): Promise<WaterLevelReading> {
 async function scrapeCwcBulletin(): Promise<WaterLevelReading> {
   const res = await fetch("https://cwc.gov.in/en/reservoir-storage-bulletin", {
     signal: AbortSignal.timeout(15_000),
-    headers: { "User-Agent": "CityPulseAI/1.0 (smart-city-demo; contact@example.com)" },
+    headers: { "User-Agent": "DystopiaCITY/1.0 (smart-city-demo; contact@example.com)" },
     next: { revalidate: 900 },
   });
 

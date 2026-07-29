@@ -368,7 +368,7 @@ export default function WaterPage() {
                   <p>• Use a bucket instead of a hose for washing vehicles</p>
                   <p>• Report leaks immediately via the form below</p>
                 </div>
-                <p className="text-xs text-accent mt-3">Ask CityPulse AI: &quot;How can I save water this summer?&quot;</p>
+                <p className="text-xs text-accent mt-3">Ask DystopiaCITY: &quot;How can I save water this summer?&quot;</p>
               </div>
 
               <div className="rounded-xl border border-border p-4">

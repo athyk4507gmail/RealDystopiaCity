@@ -14,44 +14,78 @@ from app.services.vision import analyze_frame
 
 logger = logging.getLogger(__name__)
 
-LIVE_CAMERA_CANDIDATES = [
-    {
+# Four fixed Caltrans D8 I-10 cameras — verified 2026-07-29 via cctvStatusD08.txt + curl.
+LIVE_CAMERAS: dict[str, dict[str, str]] = {
+    "north": {
+        "road": "North",
+        "label": "Camera A · North",
         "slug": "i1011woarchibaldave",
-        "source": "Caltrans D8 - I-10 west of Archibald Ave, San Bernardino County, California",
+        "source": "Caltrans D8 - I-10 w/o Archibald Ave, Ontario, California",
+        "image_file": "live_camera_north.jpg",
     },
-    {
+    "east": {
+        "road": "East",
+        "label": "Camera B · East",
         "slug": "i1012westofhaven",
-        "source": "Caltrans D8 - I-10 west of Haven Ave, San Bernardino County, California",
+        "source": "Caltrans D8 - I-10 west of Haven Ave, Ontario, California",
+        "image_file": "live_camera_east.jpg",
     },
-    {
+    "south": {
+        "road": "South",
+        "label": "Camera C · South",
         "slug": "i1004bensonavenue",
-        "source": "Caltrans D8 - I-10 Benson Ave, San Bernardino County, California",
+        "source": "Caltrans D8 - I-10 Benson Ave, Montclair, California",
+        "image_file": "live_camera_south.jpg",
     },
-]
-_active_camera_index = 0
-_request_headers = {"User-Agent": "CityPulse-CommandSignal/1.0 (+local demo)"}
+    "west": {
+        "road": "West",
+        "label": "Camera D · West",
+        "slug": "i1010eastofvineyard",
+        "source": "Caltrans D8 - I-10 east of Vineyard, Ontario, California",
+        "image_file": "live_camera_west.jpg",
+    },
+}
+
+# Primary camera for legacy /live-camera endpoint (North / Archibald — unchanged slug).
+PRIMARY_CAMERA_ID = "north"
+
+_request_headers = {"User-Agent": "DystopiaCITY-CommandSignal/1.0 (+local demo)"}
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-LIVE_CAMERA_IMAGE = STATIC_DIR / "live_camera_latest.jpg"
 
 POLL_INTERVAL_SECONDS = 12
 FETCH_TIMEOUT_SECONDS = 15
 
+
+def _default_camera_state(camera_id: str) -> dict[str, Any]:
+    cam = LIVE_CAMERAS[camera_id]
+    return {
+        "camera_id": camera_id,
+        "road": cam["road"],
+        "label": cam["label"],
+        "camera_source": cam["source"],
+        "vehicle_count": 0,
+        "person_count": 0,
+        "detections": [],
+        "green_seconds": 30,
+        "red_seconds": 30,
+        "status": "Light",
+        "image_last_updated": None,
+        "annotated_image_url": f"/static/{cam['image_file']}",
+        "fetch_error": None,
+        "error": None,
+        "night_mode": False,
+        "frame_brightness": None,
+    }
+
+
+_live_states: dict[str, dict[str, Any]] = {
+    cid: _default_camera_state(cid) for cid in LIVE_CAMERAS
+}
+# Legacy merged state for GET /live-camera (North + Gemma explanation).
 _live_state: dict[str, Any] = {
-    "camera_source": LIVE_CAMERA_CANDIDATES[0]["source"],
-    "vehicle_count": 0,
-    "person_count": 0,
-    "detections": [],
-    "green_seconds": 30,
-    "red_seconds": 30,
-    "status": "Light",
+    **_default_camera_state(PRIMARY_CAMERA_ID),
     "explanation": "Waiting for first live camera fetch…",
-    "image_last_updated": None,
-    "annotated_image_url": "/static/live_camera_latest.jpg",
-    "fetch_error": None,
-    "error": None,
-    "night_mode": False,
-    "frame_brightness": None,
 }
 
 
@@ -104,72 +138,48 @@ def _log_fetch_failure(slug: str, url: str, exc: Exception, stage: str) -> None:
     )
 
 
-def _download_camera_image() -> tuple[bytes, dict[str, str]]:
-    """
-    Fetch one camera JPEG.
-    On ANY fetch exception (TLS/handshake, timeout, HTTP, etc.), retry with
-    verify=False then rotate to the next fallback slug.
-    """
-    global _active_camera_index
-    failures: list[str] = []
-    total = len(LIVE_CAMERA_CANDIDATES)
-
-    for offset in range(total):
-        idx = (_active_camera_index + offset) % total
-        candidate = LIVE_CAMERA_CANDIDATES[idx]
-        slug = candidate["slug"]
-        url = _camera_url(slug)
+def _download_slug(slug: str) -> bytes:
+    url = _camera_url(slug)
+    try:
         try:
-            try:
-                content = _attempt_download(url, verify_ssl=settings.http_ssl_verify)
-            except Exception as ssl_exc:
-                # Covers ConnectError, SSLError, TimeoutException, and Windows
-                # revocation/handshake failures that surface as RequestError.
-                if settings.http_ssl_verify:
-                    _log_fetch_failure(slug, url, ssl_exc, "ssl_verify_true")
-                    logger.warning(
-                        "Retrying Caltrans fetch with verify=False after %s: %s",
-                        type(ssl_exc).__name__,
-                        ssl_exc,
-                    )
-                    content = _attempt_download(url, verify_ssl=False)
-                else:
-                    raise
-            _active_camera_index = idx
-            logger.info(
-                "Live camera fetch OK slug=%s bytes=%s",
-                slug,
-                len(content),
-            )
-            return content, candidate
-        except Exception as exc:
-            # ANY failure (TLS, timeout, HTTP, empty body) rotates to next slug.
-            detail = f"{type(exc).__name__}: {exc}"
-            if isinstance(exc, httpx.HTTPStatusError):
-                detail = f"http_status={exc.response.status_code}"
-            failures.append(f"{slug}:{detail}")
-            _log_fetch_failure(slug, url, exc, "slug_exhausted")
-            continue
-
-    detail = "; ".join(failures) if failures else "unknown fetch failure"
-    first = LIVE_CAMERA_CANDIDATES[_active_camera_index]
-    raise RuntimeError(
-        json.dumps(_structured_error(detail, first["slug"], _camera_url(first["slug"])))
-    )
+            return _attempt_download(url, verify_ssl=settings.http_ssl_verify)
+        except Exception as ssl_exc:
+            if settings.http_ssl_verify:
+                _log_fetch_failure(slug, url, ssl_exc, "ssl_verify_true")
+                logger.warning(
+                    "Retrying Caltrans fetch with verify=False after %s: %s",
+                    type(ssl_exc).__name__,
+                    ssl_exc,
+                )
+                return _attempt_download(url, verify_ssl=False)
+            raise
+    except Exception as exc:
+        _log_fetch_failure(slug, url, exc, "slug_failed")
+        raise
 
 
-def fetch_and_analyze_live_camera() -> dict[str, Any]:
-    """Fetch the current frame from the public camera and run detection."""
+def fetch_and_analyze_camera(camera_id: str) -> dict[str, Any]:
+    """Fetch one fixed camera slug, run detection, return state dict."""
+    if camera_id not in LIVE_CAMERAS:
+        raise ValueError(f"unknown camera_id={camera_id}")
+
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
-    image_bytes, camera = _download_camera_image()
-    LIVE_CAMERA_IMAGE.write_bytes(image_bytes)
+    cam = LIVE_CAMERAS[camera_id]
+    slug = cam["slug"]
+    image_path = STATIC_DIR / cam["image_file"]
 
-    result = analyze_frame(str(LIVE_CAMERA_IMAGE), low_light_assist=True)
+    image_bytes = _download_slug(slug)
+    image_path.write_bytes(image_bytes)
+
+    result = analyze_frame(str(image_path), low_light_assist=True)
     signal = compute_live_signal(result["vehicle_count"])
     timestamp = datetime.utcnow().isoformat()
 
     state = {
-        "camera_source": camera["source"],
+        "camera_id": camera_id,
+        "road": cam["road"],
+        "label": cam["label"],
+        "camera_source": cam["source"],
         "vehicle_count": result["vehicle_count"],
         "person_count": result["person_count"],
         "detections": result["detections"],
@@ -177,25 +187,60 @@ def fetch_and_analyze_live_camera() -> dict[str, Any]:
         "red_seconds": signal["red_seconds"],
         "status": signal["status"],
         "image_last_updated": timestamp,
-        "annotated_image_url": "/static/live_camera_latest.jpg",
+        "annotated_image_url": f"/static/{cam['image_file']}",
         "fetch_error": None,
         "error": None,
         "night_mode": result.get("night_mode", False),
         "frame_brightness": result.get("frame_brightness"),
+        "light_blob_added": result.get("light_blob_added"),
     }
-    set_cached("live_camera_state", state, ttl_seconds=15)
+    set_cached(f"live_camera_state_{camera_id}", state, ttl_seconds=15)
+    logger.info("Live camera OK id=%s slug=%s vehicles=%s", camera_id, slug, state["vehicle_count"])
     return state
 
 
-def get_live_camera_state() -> dict[str, Any]:
-    cached = get_cached("live_camera_state")
+def fetch_and_analyze_live_camera() -> dict[str, Any]:
+    """Legacy helper — primary (North) camera only."""
+    return fetch_and_analyze_camera(PRIMARY_CAMERA_ID)
+
+
+def get_live_camera_state(camera_id: str = PRIMARY_CAMERA_ID) -> dict[str, Any]:
+    cached = get_cached(f"live_camera_state_{camera_id}")
+    base = _live_states.get(camera_id, _default_camera_state(camera_id))
+    if cached:
+        return {**base, **cached}
+    return dict(base)
+
+
+def get_all_live_cameras_state() -> dict[str, Any]:
+    cameras = {cid: get_live_camera_state(cid) for cid in LIVE_CAMERAS}
+    if _live_state.get("explanation"):
+        cameras[PRIMARY_CAMERA_ID] = {
+            **cameras[PRIMARY_CAMERA_ID],
+            "explanation": _live_state["explanation"],
+        }
+    return {
+        "cameras": cameras,
+        "last_updated": datetime.utcnow().isoformat(),
+    }
+
+
+def get_legacy_live_camera_state() -> dict[str, Any]:
+    """North camera state + Gemma explanation for GET /live-camera."""
+    cached = get_cached(f"live_camera_state_{PRIMARY_CAMERA_ID}")
     if cached:
         return {**_live_state, **cached}
     return dict(_live_state)
 
 
+def _merge_camera_state(camera_id: str, state: dict[str, Any]) -> None:
+    global _live_states
+    _live_states[camera_id] = {**_live_states.get(camera_id, {}), **state}
+
+
 def _merge_live_state(state: dict[str, Any], explanation: str | None = None) -> None:
     global _live_state
+    _live_states[PRIMARY_CAMERA_ID] = {**_live_states[PRIMARY_CAMERA_ID], **state}
     _live_state = {**_live_state, **state}
     if explanation is not None:
         _live_state["explanation"] = explanation
@@ -204,26 +249,48 @@ def _merge_live_state(state: dict[str, Any], explanation: str | None = None) -> 
 async def run_live_camera_cycle(
     explain_fn: Callable[[int, int, int, int], Awaitable[str]],
 ) -> None:
-    try:
-        state = await asyncio.to_thread(fetch_and_analyze_live_camera)
-        explanation = await explain_fn(
-            state["vehicle_count"],
-            state["person_count"],
-            state["green_seconds"],
-            state["red_seconds"],
-        )
-        _merge_live_state(state, explanation)
-    except Exception as exc:
-        logger.exception(
-            "Live camera fetch/analyze cycle failed type=%s message=%s",
-            type(exc).__name__,
-            str(exc),
-        )
-        _live_state["fetch_error"] = str(exc)
+    """Fetch + analyze all four cameras; Gemma explanation only for North (legacy)."""
+    results: dict[str, dict[str, Any] | None] = {}
+    errors: dict[str, str] = {}
+
+    async def _one(cid: str) -> None:
         try:
-            _live_state["error"] = json.loads(str(exc))
-        except Exception:
-            _live_state["error"] = _structured_error(str(exc), "unknown", "unknown")
+            results[cid] = await asyncio.to_thread(fetch_and_analyze_camera, cid)
+            _merge_camera_state(cid, results[cid])  # type: ignore[arg-type]
+        except Exception as exc:
+            logger.exception(
+                "Camera cycle failed id=%s type=%s message=%s",
+                cid,
+                type(exc).__name__,
+                str(exc),
+            )
+            err = str(exc)
+            errors[cid] = err
+            fail = {**get_live_camera_state(cid), "fetch_error": err}
+            try:
+                fail["error"] = json.loads(err)
+            except Exception:
+                slug = LIVE_CAMERAS[cid]["slug"]
+                fail["error"] = _structured_error(err, slug, _camera_url(slug))
+            _merge_camera_state(cid, fail)
+
+    await asyncio.gather(*(_one(cid) for cid in LIVE_CAMERAS))
+
+    north = results.get(PRIMARY_CAMERA_ID)
+    if north:
+        try:
+            explanation = await explain_fn(
+                north["vehicle_count"],
+                north["person_count"],
+                north["green_seconds"],
+                north["red_seconds"],
+            )
+            _merge_live_state(north, explanation)
+        except Exception as exc:
+            logger.exception("Gemma explain failed: %s", exc)
+            _merge_live_state(north)
+    elif PRIMARY_CAMERA_ID in errors:
+        _live_state["fetch_error"] = errors[PRIMARY_CAMERA_ID]
 
 
 async def live_camera_background_loop(

@@ -16,10 +16,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  LIVE_CAMERA_POLL_MS,
-  useLiveCameraVehicleCount,
-} from "@/hooks/useLiveCameraVehicleCount";
+import { LIVE_CAMERA_POLL_MS } from "@/hooks/useLiveCameraVehicleCount";
+import { useLiveCamerasContext } from "@/providers/LiveCamerasProvider";
 
 const ROADS = ["North", "East", "South", "West"] as const;
 export type Road = (typeof ROADS)[number];
@@ -27,9 +25,9 @@ export type LightColor = "red" | "yellow" | "green";
 type VehicleType = "car" | "truck";
 type Maneuver = "straight" | "left" | "right";
 
-/** North is the sole camera-driven approach — not configurable. */
-export const CAMERA_DRIVEN_ROAD: Road = "North";
-const SIM_ROADS: Road[] = ["East", "South", "West"];
+/** All four approaches are camera-driven; simulated traffic is per-road fallback only. */
+export const CAMERA_DRIVEN_ROADS: Road[] = ["North", "East", "South", "West"];
+export const CAMERA_DRIVEN_ROAD: Road = "North"; // legacy highlight for North-first UI
 
 export const BASE_GREEN = 4;
 export const PER_VEHICLE_SECONDS = 2;
@@ -60,8 +58,6 @@ const OFFSCREEN_OFFSET = CANVAS / 2 + 120;
 const ENTRY_SPEED = 140;
 
 const SPAWN_CAP_PER_UPDATE = 12;
-const SIM_SPAWN_MIN_S = 3.5;
-const SIM_SPAWN_MAX_S = 7.5;
 const FALLBACK_SPAWN_MIN_S = 5;
 const FALLBACK_SPAWN_MAX_S = 9;
 const LOG_CAP = 18;
@@ -322,31 +318,6 @@ function makeVehicle(opts: {
   };
 }
 
-function spawnBurst(road: Road, count: number): Vehicle[] {
-  if (count <= 0) return [];
-  const list: Vehicle[] = [];
-  let target = 0;
-  for (let i = 0; i < count; i++) {
-    const type: VehicleType = Math.random() < 0.22 ? "truck" : "car";
-    list.push(
-      makeVehicle({
-        road,
-        type,
-        color:
-          type === "truck"
-            ? "#475569"
-            : CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)],
-        targetQueueOffset: target,
-      })
-    );
-    target += gapFor(type);
-  }
-  list.forEach((v, i) => {
-    v.queueOffset = OFFSCREEN_OFFSET + i * gapFor(v.type);
-  });
-  return list;
-}
-
 function appendToRoad(vehicles: Vehicle[], road: Road, count: number): Vehicle[] {
   if (count <= 0) return [];
   let offset = backOfQueueOffset(vehicles, road);
@@ -417,25 +388,125 @@ function drawBuilding(
 
 function drawScenery(ctx: CanvasRenderingContext2D) {
   const margin = ROAD_W / 2 + 8;
-  drawBuilding(ctx, 28, 36, 70, 88, "#1e293b");
-  drawBuilding(ctx, 110, 50, 52, 64, "#243447");
-  drawTree(ctx, 70, 150, 1.1);
-  drawTree(ctx, 150, 130, 0.9);
+  // Monitor geometry (updated): w=160, h=120.
+  // Keep larger corner “pockets” clear so bezel/label don’t overlap scenery.
+  // NW (North): x 12..172, y 28..148
+  drawBuilding(ctx, 198, 156, 52, 52, "#1e293b");
+  drawTree(ctx, 252, 174, 0.85);
 
-  drawBuilding(ctx, CX + margin + 20, 40, 64, 96, "#1e3a4a");
-  drawBuilding(ctx, CX + margin + 100, 55, 80, 70, "#1e293b");
-  drawTree(ctx, CX + margin + 50, 160, 1);
-  drawTree(ctx, CANVAS - 50, 140, 1.2);
+  // NE (East): x 468..628, y 28..148
+  drawBuilding(ctx, CX + margin + 24, 154, 60, 48, "#1e3a4a"); // ends at < 468
+  drawTree(ctx, CANVAS - 64, 176, 1);
 
-  drawBuilding(ctx, 36, CY + margin + 24, 76, 100, "#243447");
-  drawBuilding(ctx, 124, CY + margin + 40, 58, 72, "#1e293b");
-  drawTree(ctx, 60, CANVAS - 50, 1);
-  drawTree(ctx, 150, CANVAS - 70, 1.15);
+  // SW (West): x 12..172, y 512..632
+  drawBuilding(ctx, 194, 454, 54, 54, "#243447"); // above SW monitor
+  drawTree(ctx, 250, CANVAS - 72, 0.9);
 
-  drawBuilding(ctx, CX + margin + 28, CY + margin + 30, 88, 84, "#1e3a4a");
-  drawBuilding(ctx, CX + margin + 130, CY + margin + 50, 60, 110, "#243447");
-  drawTree(ctx, CANVAS - 55, CANVAS - 55, 1.1);
-  drawTree(ctx, CX + margin + 70, CANVAS - 45, 0.9);
+  // SE (South): x 468..628, y 512..632
+  drawBuilding(ctx, CX + margin + 10, 454, 56, 56, "#1e3a4a"); // ends at < 468
+  drawTree(ctx, 430, CANVAS - 72, 0.85);
+}
+
+/** Corner CCTV monitors — ~1.75× previous size for legibility. */
+const ROAD_MONITORS: { road: Road; x: number; y: number; w: number; h: number }[] = [
+  // w/h are the live image rectangle sizes; bezel and typography scale inside drawRoadMonitors().
+  { road: "North", x: 12, y: 28, w: 160, h: 120 }, // NW
+  { road: "East", x: CANVAS - 172, y: 28, w: 160, h: 120 }, // NE (keeps ~12px right margin)
+  { road: "West", x: 12, y: CANVAS - 128, w: 160, h: 120 }, // SW
+  { road: "South", x: CANVAS - 172, y: CANVAS - 128, w: 160, h: 120 }, // SE
+];
+
+function drawSignalLostScreen(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  tMs: number
+) {
+  ctx.fillStyle = "#0b1220";
+  ctx.fillRect(x, y, w, h);
+  // Static noise bands
+  for (let i = 0; i < 10; i++) {
+    const gy = y + ((i * 7 + Math.floor(tMs / 40)) % h);
+    ctx.fillStyle = `rgba(148,163,184,${0.04 + (i % 3) * 0.03})`;
+    ctx.fillRect(x, gy, w, 2);
+  }
+  ctx.fillStyle = "#f87171";
+  ctx.font = `600 ${Math.max(10, Math.round(h / 7))}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.fillText("SIGNAL LOST", x + w / 2, y + h / 2 + 2);
+}
+
+function drawRoadMonitors(
+  ctx: CanvasRenderingContext2D,
+  liveImages: Record<Road, HTMLImageElement | null>,
+  liveAvailable: Record<Road, boolean>,
+  tMs: number
+) {
+  const pulse = (Math.sin(tMs / 400) + 1) / 2;
+  for (const m of ROAD_MONITORS) {
+    const { x, y, w, h, road } = m;
+    const scale = w / 118; // previous baseline
+    const available = liveAvailable[road];
+    const liveImage = liveImages[road];
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+
+    const bezelPad = Math.max(3, Math.round(4 * scale));
+    const bezelExtraH = Math.max(12, Math.round(18 * scale));
+    const liveDotR = Math.max(3, 3.5 * scale);
+    const liveDotX = x + 9 * scale;
+    const liveDotY = y + 11 * scale;
+    const liveTextX = x + 16 * scale;
+    const liveTextY = y + 14 * scale;
+    const smallFont = Math.max(9, Math.round(9 * scale));
+    const labelY = y + h + Math.round(11 * scale);
+
+    ctx.fillStyle = "#020617";
+    ctx.fillRect(x - bezelPad, y - bezelPad, w + bezelPad * 2, h + bezelExtraH);
+    ctx.strokeStyle = "#475569";
+    ctx.lineWidth = 1.5 * scale;
+    ctx.strokeRect(x - bezelPad, y - bezelPad, w + bezelPad * 2, h + bezelExtraH);
+
+    if (available && liveImage && liveImage.complete && liveImage.naturalWidth > 0) {
+      ctx.drawImage(liveImage, x, y, w, h);
+      ctx.fillStyle = "rgba(2,6,23,0.22)";
+      ctx.fillRect(x, y, w, h);
+    } else {
+      drawSignalLostScreen(ctx, x, y, w, h, tMs);
+    }
+
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = Math.max(1, 1 * scale);
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+    if (available && liveImage) {
+      ctx.fillStyle = `rgba(239,68,68,${0.75 + pulse * 0.25})`;
+      ctx.beginPath();
+      ctx.arc(liveDotX, liveDotY, liveDotR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fecaca";
+      ctx.font = `700 ${smallFont}px ui-monospace, monospace`;
+      ctx.textAlign = "left";
+      ctx.fillText("LIVE", liveTextX, liveTextY);
+    } else {
+      ctx.fillStyle = "#64748b";
+      ctx.beginPath();
+      ctx.arc(liveDotX, liveDotY, liveDotR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = `700 ${smallFont}px ui-monospace, monospace`;
+      ctx.textAlign = "left";
+      ctx.fillText("OFF", liveTextX, liveTextY);
+    }
+
+    ctx.fillStyle = "#67e8f9";
+    ctx.font = `700 ${smallFont}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText(road.toUpperCase(), x + w / 2, labelY);
+    ctx.restore();
+  }
 }
 
 function drawCameraBadge(ctx: CanvasRenderingContext2D, x: number, y: number, pulse: number) {
@@ -461,7 +532,12 @@ function drawCameraBadge(ctx: CanvasRenderingContext2D, x: number, y: number, pu
   ctx.restore();
 }
 
-function drawRoads(ctx: CanvasRenderingContext2D, tMs: number) {
+function drawRoads(
+  ctx: CanvasRenderingContext2D,
+  tMs: number,
+  liveImages: Record<Road, HTMLImageElement | null>,
+  liveAvailable: Record<Road, boolean>
+) {
   ctx.fillStyle = "#1a2332";
   ctx.fillRect(0, 0, CANVAS, CANVAS);
 
@@ -477,28 +553,44 @@ function drawRoads(ctx: CanvasRenderingContext2D, tMs: number) {
   }
 
   drawScenery(ctx);
+  drawRoadMonitors(ctx, liveImages, liveAvailable, tMs);
 
-  // Normal asphalt (E/S/W arms + full cross first)
+  // Normal asphalt
   ctx.fillStyle = "#334155";
   ctx.fillRect(CX - ROAD_W / 2, 0, ROAD_W, CANVAS);
   ctx.fillRect(0, CY - ROAD_W / 2, CANVAS, ROAD_W);
 
-  // Camera-driven North arm — distinct cyan-tint surface
+  // Camera-driven arms — subtle cyan tint on all four live approaches
   const pulse = (Math.sin(tMs / 450) + 1) / 2;
-  ctx.fillStyle = `rgba(8, 145, 178, ${0.28 + pulse * 0.12})`;
-  ctx.fillRect(CX - ROAD_W / 2, 0, ROAD_W, CY - INTER / 2);
+  const camTint = `rgba(8, 145, 178, ${0.2 + pulse * 0.08})`;
+  ctx.fillStyle = camTint;
+  ctx.fillRect(CX - ROAD_W / 2, 0, ROAD_W, CY - INTER / 2); // North
+  ctx.fillRect(CX + INTER / 2, CY - ROAD_W / 2, CANVAS - (CX + INTER / 2), ROAD_W); // East
+  ctx.fillRect(CX - ROAD_W / 2, CY + INTER / 2, ROAD_W, CANVAS - (CY + INTER / 2)); // South
+  ctx.fillRect(0, CY - ROAD_W / 2, CX - INTER / 2, ROAD_W); // West
 
-  // Pulsing glow border along North approach
   ctx.save();
-  ctx.strokeStyle = `rgba(34, 211, 238, ${0.35 + pulse * 0.55})`;
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = `rgba(34, 211, 238, ${0.25 + pulse * 0.4})`;
+  ctx.lineWidth = 2;
   ctx.shadowColor = "#22d3ee";
-  ctx.shadowBlur = 10 + pulse * 14;
+  ctx.shadowBlur = 6 + pulse * 10;
   ctx.beginPath();
   ctx.moveTo(CX - ROAD_W / 2, 0);
   ctx.lineTo(CX - ROAD_W / 2, CY - INTER / 2);
   ctx.moveTo(CX + ROAD_W / 2, 0);
   ctx.lineTo(CX + ROAD_W / 2, CY - INTER / 2);
+  ctx.moveTo(CANVAS, CY - ROAD_W / 2);
+  ctx.lineTo(CX + INTER / 2, CY - ROAD_W / 2);
+  ctx.moveTo(CANVAS, CY + ROAD_W / 2);
+  ctx.lineTo(CX + INTER / 2, CY + ROAD_W / 2);
+  ctx.moveTo(CX - ROAD_W / 2, CANVAS);
+  ctx.lineTo(CX - ROAD_W / 2, CY + INTER / 2);
+  ctx.moveTo(CX + ROAD_W / 2, CANVAS);
+  ctx.lineTo(CX + ROAD_W / 2, CY + INTER / 2);
+  ctx.moveTo(0, CY - ROAD_W / 2);
+  ctx.lineTo(CX - INTER / 2, CY - ROAD_W / 2);
+  ctx.moveTo(0, CY + ROAD_W / 2);
+  ctx.lineTo(CX - INTER / 2, CY + ROAD_W / 2);
   ctx.stroke();
   ctx.restore();
 
@@ -540,17 +632,16 @@ function drawRoads(ctx: CanvasRenderingContext2D, tMs: number) {
   ctx.textAlign = "center";
   ctx.fillStyle = "#67e8f9";
   ctx.fillText("NORTH · LIVE", CX, 18);
-  ctx.fillStyle = "#94a3b8";
-  ctx.fillText("SOUTH", CX, CANVAS - 8);
+  ctx.fillText("SOUTH · LIVE", CX, CANVAS - 8);
   ctx.save();
   ctx.translate(14, CY);
   ctx.rotate(-Math.PI / 2);
-  ctx.fillText("WEST", 0, 0);
+  ctx.fillText("WEST · LIVE", 0, 0);
   ctx.restore();
   ctx.save();
   ctx.translate(CANVAS - 14, CY);
   ctx.rotate(Math.PI / 2);
-  ctx.fillText("EAST", 0, 0);
+  ctx.fillText("EAST · LIVE", 0, 0);
   ctx.restore();
 }
 
@@ -599,7 +690,7 @@ function drawTrafficLight(
   ctx.textAlign = "center";
   ctx.fillText(String(Math.ceil(Math.max(0, countdown))), x, y + boxH / 2 + 14);
 
-  if (road === CAMERA_DRIVEN_ROAD) {
+  if (CAMERA_DRIVEN_ROADS.includes(road)) {
     const pulse = (Math.sin(tMs / 450) + 1) / 2;
     drawCameraBadge(ctx, x + 22, y - 18, pulse);
   }
@@ -639,11 +730,11 @@ function drawVehicle(ctx: CanvasRenderingContext2D, v: Vehicle) {
 
 interface DystopiaContextValue {
   running: boolean;
-  simulateOffline: boolean;
-  setSimulateOffline: (v: boolean) => void;
+  simulateOfflineRoad: Road | null;
+  setSimulateOfflineRoad: (road: Road | null) => void;
   log: LogEntry[];
   snapshot: SimSnapshot;
-  camera: ReturnType<typeof useLiveCameraVehicleCount>;
+  cameras: ReturnType<typeof useLiveCamerasContext>;
   start: () => void;
   stop: () => void;
   registerCanvas: (canvas: HTMLCanvasElement | null) => void;
@@ -662,7 +753,7 @@ export function useDystopia(): DystopiaContextValue {
 
 export function DystopiaProvider({ children }: { children: ReactNode }) {
   const [running, setRunning] = useState(false);
-  const [simulateOffline, setSimulateOffline] = useState(false);
+  const [simulateOfflineRoad, setSimulateOfflineRoad] = useState<Road | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [snapshot, setSnapshot] = useState<SimSnapshot>({
     lights: { North: "red", East: "red", South: "red", West: "red" },
@@ -671,10 +762,7 @@ export function DystopiaProvider({ children }: { children: ReactNode }) {
     currentGreen: null,
   });
 
-  // Poll only while the sim is running (continues after leaving /dystopia).
-  const camera = useLiveCameraVehicleCount({
-    enabled: running && !simulateOffline,
-  });
+  const cameras = useLiveCamerasContext();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const vehiclesRef = useRef<Vehicle[]>([]);
@@ -699,15 +787,71 @@ export function DystopiaProvider({ children }: { children: ReactNode }) {
   const lastSnapUiRef = useRef(0);
   const runningRef = useRef(false);
   const loopStartedRef = useRef(false);
-  const simTimersRef = useRef<Record<Road, number>>({
-    North: 0,
-    East: randInterval(SIM_SPAWN_MIN_S, SIM_SPAWN_MAX_S),
-    South: randInterval(SIM_SPAWN_MIN_S, SIM_SPAWN_MAX_S),
-    West: randInterval(SIM_SPAWN_MIN_S, SIM_SPAWN_MAX_S),
+  const fallbackTimersRef = useRef<Record<Road, number>>({
+    North: randInterval(FALLBACK_SPAWN_MIN_S, FALLBACK_SPAWN_MAX_S),
+    East: randInterval(FALLBACK_SPAWN_MIN_S, FALLBACK_SPAWN_MAX_S),
+    South: randInterval(FALLBACK_SPAWN_MIN_S, FALLBACK_SPAWN_MAX_S),
+    West: randInterval(FALLBACK_SPAWN_MIN_S, FALLBACK_SPAWN_MAX_S),
   });
-  const fallbackTimerRef = useRef(randInterval(FALLBACK_SPAWN_MIN_S, FALLBACK_SPAWN_MAX_S));
-  const lastCameraCountRef = useRef<number | null>(null);
-  const wasAvailableRef = useRef(false);
+  const lastCameraCountRef = useRef<Record<Road, number | null>>({
+    North: null,
+    East: null,
+    South: null,
+    West: null,
+  });
+  const wasAvailableRef = useRef<Record<Road, boolean>>({
+    North: false,
+    East: false,
+    South: false,
+    West: false,
+  });
+  const liveImageRefs = useRef<Record<Road, HTMLImageElement | null>>({
+    North: null,
+    East: null,
+    South: null,
+    West: null,
+  });
+  const liveAvailableRefs = useRef<Record<Road, boolean>>({
+    North: false,
+    East: false,
+    South: false,
+    West: false,
+  });
+  const simulateOfflineRoadRef = useRef<Road | null>(null);
+
+  useEffect(() => {
+    simulateOfflineRoadRef.current = simulateOfflineRoad;
+  }, [simulateOfflineRoad]);
+
+  const roadFeedAvailable = useCallback(
+    (road: Road) => {
+      if (simulateOfflineRoad === road) return false;
+      return cameras.feedsByRoad[road].available;
+    },
+    [cameras.feedsByRoad, simulateOfflineRoad]
+  );
+
+  // Load per-road JPEGs from shared poll — no extra fetches.
+  useEffect(() => {
+    for (const road of ROADS) {
+      const feed = cameras.feedsByRoad[road];
+      const available = roadFeedAvailable(road);
+      liveAvailableRefs.current[road] = available;
+      if (!available || !feed.imageUrl) {
+        liveImageRefs.current[road] = null;
+        continue;
+      }
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = () => {
+        liveImageRefs.current[road] = img;
+      };
+      img.onerror = () => {
+        liveImageRefs.current[road] = null;
+      };
+      img.src = feed.imageUrl;
+    }
+  }, [cameras.feedsByRoad, roadFeedAvailable]);
 
   const pushLog = useCallback((text: string) => {
     const entry: LogEntry = { id: uid("log"), time: formatClock(), text };
@@ -732,7 +876,7 @@ export function DystopiaProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const spawnOnRoad = useCallback(
-    (road: Road, count: number, reason: "sim" | "camera" | "fallback") => {
+    (road: Road, count: number, reason: "camera" | "fallback") => {
       const n = Math.min(SPAWN_CAP_PER_UPDATE, Math.max(0, count));
       if (n <= 0) return;
       const batch = appendToRoad(vehiclesRef.current, road, n);
@@ -741,12 +885,10 @@ export function DystopiaProvider({ children }: { children: ReactNode }) {
         vehiclesRef.current.push(v);
       });
 
-      if (reason === "sim") {
-        pushLog(`🚗 ${road}: +${n} vehicle${n === 1 ? "" : "s"} (simulated)`);
-      } else if (reason === "camera") {
-        pushLog(`🎥 ${n} vehicle${n === 1 ? "" : "s"} detected on live feed — spawning on North`);
+      if (reason === "camera") {
+        pushLog(`🎥 ${road}: +${n} from live feed`);
       } else {
-        pushLog(`⚠️ Fallback: +${n} on North (camera unavailable)`);
+        pushLog(`⚠️ ${road}: +${n} (camera fallback)`);
       }
     },
     [pushLog]
@@ -784,7 +926,7 @@ export function DystopiaProvider({ children }: { children: ReactNode }) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const tMs = performance.now();
-    drawRoads(ctx, tMs);
+    drawRoads(ctx, tMs, liveImageRefs.current, liveAvailableRefs.current);
     for (const road of ROADS) {
       drawTrafficLight(ctx, road, lightsRef.current[road], countdownRef.current[road], tMs);
     }
@@ -875,21 +1017,16 @@ export function DystopiaProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      for (const road of SIM_ROADS) {
-        simTimersRef.current[road] -= dt;
-        if (simTimersRef.current[road] <= 0) {
-          const n = Math.random() < 0.25 ? 0 : Math.random() < 0.55 ? 1 : 2;
-          if (n > 0) spawnOnRoad(road, n, "sim");
-          simTimersRef.current[road] = randInterval(SIM_SPAWN_MIN_S, SIM_SPAWN_MAX_S);
-        }
-      }
-
-      if (!wasAvailableRef.current) {
-        fallbackTimerRef.current -= dt;
-        if (fallbackTimerRef.current <= 0) {
+      for (const road of ROADS) {
+        if (liveAvailableRefs.current[road]) continue;
+        fallbackTimersRef.current[road] -= dt;
+        if (fallbackTimersRef.current[road] <= 0) {
           const n = Math.random() < 0.4 ? 0 : 1;
-          if (n > 0) spawnOnRoad(CAMERA_DRIVEN_ROAD, n, "fallback");
-          fallbackTimerRef.current = randInterval(FALLBACK_SPAWN_MIN_S, FALLBACK_SPAWN_MAX_S);
+          if (n > 0) spawnOnRoad(road, n, "fallback");
+          fallbackTimersRef.current[road] = randInterval(
+            FALLBACK_SPAWN_MIN_S,
+            FALLBACK_SPAWN_MAX_S
+          );
         }
       }
 
@@ -946,76 +1083,78 @@ export function DystopiaProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!running) return;
 
-    if (!camera.available) {
-      if (wasAvailableRef.current) {
-        pushLog("⚠️ Camera feed unavailable — North running on fallback traffic");
+    for (const road of ROADS) {
+      const feed = cameras.feedsByRoad[road];
+      const available = roadFeedAvailable(road);
+      const count = feed.vehicleCount;
+
+      if (!available) {
+        if (wasAvailableRef.current[road]) {
+          pushLog(`⚠️ ${road} camera offline — fallback traffic`);
+        }
+        wasAvailableRef.current[road] = false;
+        continue;
       }
-      wasAvailableRef.current = false;
-      return;
-    }
 
-    const count = camera.vehicleCount;
-    if (count == null) return;
+      if (count == null) continue;
 
-    if (!wasAvailableRef.current) {
-      wasAvailableRef.current = true;
-      pushLog(`🎥 Live camera linked — ${count} vehicles detected`);
-    }
+      if (!wasAvailableRef.current[road]) {
+        wasAvailableRef.current[road] = true;
+        pushLog(`🎥 ${road} linked — ${count} vehicles detected`);
+      }
 
-    const prev = lastCameraCountRef.current;
-    if (prev == null) {
-      lastCameraCountRef.current = count;
-      const seed = Math.min(SPAWN_CAP_PER_UPDATE, count);
-      if (seed > 0) spawnOnRoad(CAMERA_DRIVEN_ROAD, seed, "camera");
-      return;
-    }
+      const prev = lastCameraCountRef.current[road];
+      if (prev == null) {
+        lastCameraCountRef.current[road] = count;
+        const seed = Math.min(SPAWN_CAP_PER_UPDATE, count);
+        if (seed > 0) spawnOnRoad(road, seed, "camera");
+        continue;
+      }
 
-    if (count > prev) {
-      const delta = Math.min(SPAWN_CAP_PER_UPDATE, count - prev);
-      spawnOnRoad(CAMERA_DRIVEN_ROAD, delta, "camera");
-    } else if (count < prev) {
-      pushLog(`🎥 Camera count dropped to ${count} — no new spawns needed`);
+      if (count > prev) {
+        const delta = Math.min(SPAWN_CAP_PER_UPDATE, count - prev);
+        spawnOnRoad(road, delta, "camera");
+      } else if (count < prev) {
+        pushLog(`🎥 ${road} count dropped to ${count} — no despawn`);
+      }
+      lastCameraCountRef.current[road] = count;
     }
-    lastCameraCountRef.current = count;
   }, [
-    camera.available,
-    camera.vehicleCount,
-    camera.updatedAtMs,
+    cameras.feedsByRoad,
     running,
+    roadFeedAvailable,
     pushLog,
     spawnOnRoad,
   ]);
 
   const start = useCallback(() => {
-    if (runningRef.current) return; // no duplicate start
+    if (runningRef.current) return;
     vehiclesRef.current = [];
-    lastCameraCountRef.current = null;
-    wasAvailableRef.current = false;
-    for (const r of SIM_ROADS) {
-      simTimersRef.current[r] = randInterval(0.8, 2.2);
-    }
-    fallbackTimerRef.current = randInterval(2, 4);
-    for (const r of SIM_ROADS) {
-      vehiclesRef.current.push(...spawnBurst(r, 1 + Math.floor(Math.random() * 2)));
+    for (const r of ROADS) {
+      lastCameraCountRef.current[r] = null;
+      wasAvailableRef.current[r] = false;
+      fallbackTimersRef.current[r] = randInterval(2, 4);
     }
     runningRef.current = true;
     setRunning(true);
     setLog([]);
     pushLog("▶ Dystopia simulation started");
-    if (simulateOffline || !camera.available) {
-      pushLog("⚠️ Camera feed unavailable — North running on fallback traffic");
+    for (const r of ROADS) {
+      if (!roadFeedAvailable(r)) {
+        pushLog(`⚠️ ${r} camera unavailable — fallback traffic`);
+      }
     }
     startGreen("North");
-  }, [camera.available, pushLog, simulateOffline, startGreen]);
+  }, [pushLog, roadFeedAvailable, startGreen]);
 
   const stop = useCallback(() => {
     runningRef.current = false;
     setRunning(false);
     vehiclesRef.current = [];
     phaseRef.current = "idle";
-    lastCameraCountRef.current = null;
-    wasAvailableRef.current = false;
     for (const r of ROADS) {
+      lastCameraCountRef.current[r] = null;
+      wasAvailableRef.current[r] = false;
       lightsRef.current[r] = "red";
       countdownRef.current[r] = 0;
     }
@@ -1035,11 +1174,11 @@ export function DystopiaProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DystopiaContextValue>(
     () => ({
       running,
-      simulateOffline,
-      setSimulateOffline,
+      simulateOfflineRoad,
+      setSimulateOfflineRoad,
       log,
       snapshot,
-      camera,
+      cameras,
       start,
       stop,
       registerCanvas,
@@ -1047,10 +1186,10 @@ export function DystopiaProvider({ children }: { children: ReactNode }) {
     }),
     [
       running,
-      simulateOffline,
+      simulateOfflineRoad,
       log,
       snapshot,
-      camera,
+      cameras,
       start,
       stop,
       registerCanvas,

@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str = "sqlite:///./citypulse.db"
+    database_url: str = "sqlite:///./dystopiacty.db"
     gemma_model_id: str = "google/gemma-4-12B-it"
     google_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"

@@ -92,6 +92,10 @@ export const api = {
   trafficManagement: {
     liveState: () => fetchApi<TrafficManagementLiveState>("/api/traffic-management/live-state"),
     liveCamera: () => fetchApi<LiveCameraState>("/api/traffic-management/live-camera"),
+    liveCameras: () =>
+      fetchApi<{ cameras: Record<string, LiveCameraState>; last_updated: string }>(
+        "/api/traffic-management/live-cameras"
+      ),
     captureJunction: async (junctionId: string, file: File) => {
       const form = new FormData();
       form.append("image", file);
@@ -398,6 +402,9 @@ export interface DetectionBox {
 }
 
 export interface LiveCameraState {
+  camera_id?: string;
+  road?: string;
+  label?: string;
   camera_source: string;
   vehicle_count: number;
   person_count: number;
@@ -405,10 +412,13 @@ export interface LiveCameraState {
   green_seconds: number;
   red_seconds: number;
   status: "Light" | "Moderate" | "Heavy";
-  explanation: string;
+  explanation?: string;
   image_last_updated: string | null;
   annotated_image_url: string;
   fetch_error?: string | null;
+  night_mode?: boolean;
+  frame_brightness?: number | null;
+  light_blob_added?: number;
 }
 
 export interface JunctionState {
