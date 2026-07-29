@@ -33,8 +33,21 @@ async def get_signal_recommendations(db: Session) -> list[dict]:
             "\"reasoning\", \"congestion_change_pct\" }."
         )
         data = _signal_to_dict(signal)
-        response = await gemma.generate(system, f"Signal data: {data}")
-        rec = gemma.parse_json(response)
+        try:
+            import asyncio
+            response = await asyncio.wait_for(gemma.generate(system, f"Signal data: {data}"), timeout=10.0)
+            rec = gemma.parse_json(response)
+        except asyncio.TimeoutError:
+            extra = min(20, signal.queue_length // 3)
+            rec = {
+                "signal_name": signal.name,
+                "recommended_green_sec": signal.green_time_sec + extra,
+                "reasoning": (
+                    f"Queue length is {signal.queue_length} vehicles and congestion is at "
+                    f"{signal.congestion_pct:.0f}%. Increasing green time by {extra}s to clear backlog."
+                ),
+                "congestion_change_pct": -15,
+            }
         if "recommended_green_sec" not in rec:
             extra = min(20, signal.queue_length // 3)
             rec = {

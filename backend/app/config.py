@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     tomtom_api_key: str = ""
     nominatim_email: str = ""
     demo_city_name: str = "Bengaluru"
+    http_ssl_verify: bool = True
 
     class Config:
         env_file = ".env"

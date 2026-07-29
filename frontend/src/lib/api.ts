@@ -89,6 +89,20 @@ export const api = {
         body: JSON.stringify({ from_road: from, to_road: to }),
       }),
   },
+  trafficManagement: {
+    liveState: () => fetchApi<TrafficManagementLiveState>("/api/traffic-management/live-state"),
+    liveCamera: () => fetchApi<LiveCameraState>("/api/traffic-management/live-camera"),
+    captureJunction: async (junctionId: string, file: File) => {
+      const form = new FormData();
+      form.append("image", file);
+      const res = await fetch(`${API_BASE}/api/traffic-management/junction/${junctionId}/capture`, {
+        method: "POST",
+        body: form,
+      });
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      return res.json() as Promise<JunctionCaptureResult>;
+    },
+  },
   metabolism: {
     vitals: () => fetchApi<CityVitals>("/api/metabolism/vitals"),
     stressTest: (event: string) =>
@@ -373,4 +387,49 @@ export interface LiveTrafficPayload extends SourceTagged {
   current_speed_kmh: number | null;
   free_flow_speed_kmh: number | null;
   congestion_pct: number | null;
+}
+
+export interface DetectionBox {
+  class: string;
+  confidence: number;
+  bbox: [number, number, number, number];
+  /** Present on night headlight/taillight blob detections only. */
+  source?: string;
+}
+
+export interface LiveCameraState {
+  camera_source: string;
+  vehicle_count: number;
+  person_count: number;
+  detections: DetectionBox[];
+  green_seconds: number;
+  red_seconds: number;
+  status: "Light" | "Moderate" | "Heavy";
+  explanation: string;
+  image_last_updated: string | null;
+  annotated_image_url: string;
+  fetch_error?: string | null;
+}
+
+export interface JunctionState {
+  vehicle_count: number;
+  detections: DetectionBox[];
+  red_light_duration: number;
+  is_congested: boolean;
+  timestamp: string | null;
+  image_path: string | null;
+}
+
+export interface TrafficManagementLiveState {
+  junctions: Record<string, JunctionState>;
+  signal_durations: Record<string, number>;
+  explanation: string;
+  last_updated: string;
+}
+
+export interface JunctionCaptureResult {
+  junction_id: string;
+  vehicle_count: number;
+  detections: DetectionBox[];
+  timestamp: string;
 }

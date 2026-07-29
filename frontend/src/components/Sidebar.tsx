@@ -11,6 +11,9 @@ import {
   Activity,
   Zap,
   MessageSquare,
+  Radio,
+  Crosshair,
+  Skull,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -21,6 +24,9 @@ const modules = [
   { href: "/risk-zones", label: "Risk Zones", icon: AlertTriangle, color: "text-orange-400" },
   { href: "/traffic-mood", label: "Traffic Mood", icon: CloudRain, color: "text-purple-400" },
   { href: "/traffic", label: "Traffic Management", icon: TrafficCone, color: "text-yellow-400" },
+  { href: "/traffic-management", label: "Command Signal", icon: Radio, color: "text-cyan-400" },
+  { href: "/junction-x", label: "Junction X", icon: Crosshair, color: "text-amber-400" },
+  { href: "/dystopia", label: "Dystopia", icon: Skull, color: "text-rose-400" },
   { href: "/metabolism", label: "City Metabolism", icon: Activity, color: "text-emerald-400" },
 ];
 
