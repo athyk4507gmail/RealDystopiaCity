@@ -130,8 +130,18 @@ async def generate_schedule(db: Session) -> list[dict]:
     for index, ward in enumerate(wards):
         ward_data = _ward_to_dict(ward)
         prompt = f"Ward data: {ward_data}"
-        response = await gemma.generate(WATER_SYSTEM_PROMPT, prompt)
-        rec = gemma.parse_json(response)
+        try:
+            import asyncio
+            response = await asyncio.wait_for(gemma.generate(WATER_SYSTEM_PROMPT, prompt), timeout=8.0)
+            rec = gemma.parse_json(response)
+        except asyncio.TimeoutError:
+            rec = {
+                "priority": "Medium",
+                "supply_today": True,
+                "duration_hours": 3,
+                "allocation_litres": ward.avg_daily_consumption * 1.2,
+                "reasoning": f"Ward {ward.name} scheduled for supply based on standard allocation.",
+            }
 
         priority = str(rec.get("priority", "Medium"))
         allocation = float(rec.get("allocation_litres", ward.avg_daily_consumption))

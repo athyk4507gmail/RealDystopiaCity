@@ -7,7 +7,7 @@ from app.services.water import get_today_schedule, get_wards
 async def chat(message: str, module: str, db) -> dict:
     context = await _build_context(module, db)
     system = (
-        f"You are CityPulse AI, a municipal intelligence assistant for the {module} module. "
+        f"You are DystopiaCITY, a municipal intelligence assistant for the {module} module. "
         f"Answer questions using the provided live data. Be concise and helpful.\n\n"
         f"Current data context:\n{context}"
     )

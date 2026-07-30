@@ -104,6 +104,8 @@ class GemmaService:
     async def _call_google(
         self, system_prompt: str, user_prompt: str, image_b64: Optional[str]
     ) -> Optional[str]:
+        if not self.google_api_key:
+            return None
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self.model_id}:generateContent?key={self.google_api_key}"
@@ -117,7 +119,7 @@ class GemmaService:
             "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024},
         }
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(url, json=payload)
                 if resp.status_code != 200:
                     return None
@@ -176,22 +178,42 @@ class GemmaService:
                 "category": "Infrastructure",
                 "suggested_response": "Thank you for your report. Our team will investigate and update you within 24 hours.",
             })
+
         if "announcement" in system_prompt.lower():
             return json.dumps({
                 "draft": "Dear residents, please note a planned water supply disruption in your area. We apologize for the inconvenience and expect to restore supply as soon as possible.",
             })
+
         if "citizen question" in system_prompt.lower() or "citizen q&a" in system_prompt.lower():
             return json.dumps({
                 "answer": "Based on current ward data, supply is expected according to the scheduled time window. Please store adequate water in advance.",
             })
+
         if "issue pattern" in system_prompt.lower() or "recurring" in system_prompt.lower():
             return json.dumps({
                 "summary": "The most common issues are leakage reports and supply disruptions. Consider scheduling preventive maintenance for high-complaint wards.",
             })
+
+        if "live public camera feed" in system_prompt.lower():
+            return (
+                "The live camera shows moderate highway traffic. Signal timing was adjusted "
+                "based on detected vehicle volume — green time was extended to help clear "
+                "the queue. Pedestrians visible near the roadside are noted for context but "
+                "do not drive the timing calculation."
+            )
+
+        if "multi-junction city grid" in system_prompt.lower():
+            return (
+                "Several junctions show elevated vehicle counts. Neighboring signals received "
+                "longer red phases to reduce inflow into congested areas while those junctions clear."
+            )
+
         return (
-            json.dumps({"response": "CityPulse AI is operating in offline mode. Configure GEMMA_API_KEY + GEMMA_API_BASE_URL (or GOOGLE_API_KEY) in backend/.env for live Gemma responses."})
+            json.dumps({
+                "response": "DystopiaCITY AI is operating in offline mode. Configure GOOGLE_API_KEY or Ollama for live Gemma 4 responses."
+            })
             if json_mode
-            else "CityPulse AI offline mode: configure GEMMA_API_KEY + GEMMA_API_BASE_URL in backend/.env for live Gemma responses."
+            else "DystopiaCITY offline mode: configure GOOGLE_API_KEY or Ollama for live Gemma 4."
         )
 
     def _water_fallback(self, user_prompt: str) -> dict:
@@ -259,3 +281,46 @@ class GemmaService:
 
 
 gemma = GemmaService()
+
+TRAFFIC_MANAGEMENT_PROMPT = """You are a traffic signal assistant for a multi-junction city grid.
+Given vehicle counts and computed red-light durations for neighboring junctions, write a
+2-3 sentence plain-text summary of the overall traffic state and why signals were adjusted."""
+
+LIVE_CAMERA_PROMPT = """You are a traffic signal assistant analyzing a live public camera feed.
+Given the current detected vehicle count, pedestrian count, and computed signal timing, write a
+one-paragraph explanation of the current traffic state and why the signal was adjusted this way.
+Mention pedestrians as context if relevant (e.g. near a crossing), but make clear the timing
+decision itself is based on vehicle count. Respond in plain text, 2-3 sentences."""
+
+
+async def explain_traffic_management(
+    vehicle_counts: dict, signal_durations: dict
+) -> str:
+    congested = [j for j, c in vehicle_counts.items() if c >= 25]
+    user_prompt = (
+        f"Vehicle counts: {vehicle_counts}. "
+        f"Red-light durations (seconds): {signal_durations}. "
+        f"Congested junctions (≥25 vehicles): {congested or 'none'}."
+    )
+    response = await gemma.generate(
+        TRAFFIC_MANAGEMENT_PROMPT, user_prompt, json_mode=False
+    )
+    return response.strip()
+
+
+async def explain_live_camera(
+    vehicle_count: int,
+    person_count: int,
+    green_seconds: int,
+    red_seconds: int,
+) -> str:
+    user_prompt = (
+        f"Data: {vehicle_count} vehicles detected, {person_count} people detected, "
+        f"green light set to {green_seconds}s, red light set to {red_seconds}s."
+    )
+    response = await gemma.generate(LIVE_CAMERA_PROMPT, user_prompt, json_mode=False)
+    text = response.strip()
+    if text.startswith("{"):
+        parsed = gemma.parse_json(text)
+        return parsed.get("response", text)
+    return text

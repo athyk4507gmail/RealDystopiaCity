@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str = "sqlite:///./citypulse.db"
-    gemma_model_id: str = "gemma-4-26b-a4b-it"
+    database_url: str = "sqlite:///./dystopiacty.db"
+    gemma_model_id: str = "google/gemma-4-12B-it"
     google_api_key: str = ""
     # Generic OpenAI-compatible provider (HuggingFace, OpenRouter, Groq, Together, etc.)
     gemma_api_key: str = ""
@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     tomtom_api_key: str = ""
     nominatim_email: str = ""
     demo_city_name: str = "Bengaluru"
+    http_ssl_verify: bool = True
 
     class Config:
         env_file = ".env"

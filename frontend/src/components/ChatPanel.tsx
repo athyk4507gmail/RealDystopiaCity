@@ -16,7 +16,7 @@ export default function ChatPanel({ module }: { module: string }) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Hi! I'm CityPulse AI. Ask me anything about the current module data.",
+      content: "Hi! I'm DystopiaCITY. Ask me anything about the current module data.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -52,14 +52,14 @@ export default function ChatPanel({ module }: { module: string }) {
         )}
       >
         <MessageCircle className="w-5 h-5" />
-        Ask CityPulse AI
+        Ask DystopiaCITY
       </button>
 
       {open && (
         <div className="fixed bottom-6 right-6 z-50 w-96 h-[500px] flex flex-col rounded-xl border border-border bg-card shadow-2xl">
           <div className="flex items-center justify-between p-4 border-b border-border">
             <div>
-              <h3 className="font-semibold text-sm">Ask CityPulse AI</h3>
+              <h3 className="font-semibold text-sm">Ask DystopiaCITY</h3>
               <p className="text-xs text-slate-400">Gemma 4 powered</p>
             </div>
             <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-foreground">

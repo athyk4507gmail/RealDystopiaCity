@@ -2,15 +2,15 @@ services:
   db:
     image: postgis/postgis:16-3.4
     environment:
-      POSTGRES_USER: citypulse
-      POSTGRES_PASSWORD: citypulse
-      POSTGRES_DB: citypulse
+      POSTGRES_USER: dystopiacty
+      POSTGRES_PASSWORD: dystopiacty
+      POSTGRES_DB: dystopiacty
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U citypulse"]
+      test: ["CMD-SHELL", "pg_isready -U dystopiacty"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,7 +20,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+psycopg://citypulse:citypulse@db:5432/citypulse
+      DATABASE_URL: postgresql+psycopg://dystopiacty:dystopiacty@db:5432/dystopiacty
       GEMMA_MODEL_ID: google/gemma-4-12B-it
       GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}

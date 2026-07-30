@@ -53,7 +53,7 @@ async def fetch_reported_events(limit: int = 8) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
         for feed_url in EVENT_FEEDS:
             try:
-                response = await client.get(feed_url, headers={"User-Agent": "CityPulseAI/1.0"})
+                response = await client.get(feed_url, headers={"User-Agent": "DystopiaCITY/1.0"})
                 response.raise_for_status()
                 events.extend(_parse_rss_items(response.text, limit=limit))
             except Exception:

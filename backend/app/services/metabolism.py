@@ -98,8 +98,12 @@ async def run_stress_test(db: Session, event_type: str) -> dict:
         'Respond in JSON: { "narrative", "resilience_index" }.'
     )
     prompt = f"Stress event: {event_type}. Cascade effects: {cascade}. Vitals before: {vitals_before}. After: {vitals_after}."
-    response = await gemma.generate(system, prompt)
-    narration = gemma.parse_json(response)
+    try:
+        import asyncio
+        response = await asyncio.wait_for(gemma.generate(system, prompt), timeout=10.0)
+        narration = gemma.parse_json(response)
+    except asyncio.TimeoutError:
+        narration = {"narrative": f"Stress event {event_type} triggered cascade effects across city systems.", "resilience_index": resilience}
 
     return {
         "event_type": event_type,

@@ -3,6 +3,8 @@
 import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
 import ChatPanel from "./ChatPanel";
+import { DystopiaProvider } from "@/dystopia/DystopiaProvider";
+import { LiveCamerasProvider } from "@/providers/LiveCamerasProvider";
 
 const moduleMap: Record<string, string> = {
   "/water": "water",
@@ -18,10 +20,14 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   const module = Object.entries(moduleMap).find(([path]) => pathname.startsWith(path))?.[1] || "global";
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto">{children}</main>
-      <ChatPanel module={module} />
-    </div>
+    <LiveCamerasProvider>
+      <DystopiaProvider>
+        <div className="flex h-screen overflow-hidden">
+          <Sidebar />
+          <main className="flex-1 overflow-y-auto">{children}</main>
+          <ChatPanel module={module} />
+        </div>
+      </DystopiaProvider>
+    </LiveCamerasProvider>
   );
 }

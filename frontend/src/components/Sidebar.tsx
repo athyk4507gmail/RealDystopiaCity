@@ -12,6 +12,9 @@ import {
   Zap,
   MessageSquare,
   IndianRupee,
+  Radio,
+  Crosshair,
+  Skull,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -22,6 +25,9 @@ const modules = [
   { href: "/risk-zones", label: "Risk Zones", icon: AlertTriangle, color: "text-orange-400" },
   { href: "/traffic-mood", label: "Traffic Mood", icon: CloudRain, color: "text-purple-400" },
   { href: "/traffic", label: "Traffic Management", icon: TrafficCone, color: "text-yellow-400" },
+  { href: "/traffic-management", label: "Command Signal", icon: Radio, color: "text-cyan-400" },
+  { href: "/junction-x", label: "Junction X", icon: Crosshair, color: "text-amber-400" },
+  { href: "/dystopia", label: "Dystopia", icon: Skull, color: "text-rose-400" },
   { href: "/metabolism", label: "City Metabolism", icon: Activity, color: "text-emerald-400" },
   { href: "/budget-watch", label: "Budget Watch", icon: IndianRupee, color: "text-green-400" },
 ];
@@ -35,7 +41,7 @@ export default function Sidebar() {
         <div className="flex items-center gap-2">
           <Zap className="w-6 h-6 text-accent" />
           <div>
-            <h1 className="font-bold text-lg leading-tight">CityPulse AI</h1>
+            <h1 className="font-bold text-lg leading-tight">DystopiaCITY</h1>
             <p className="text-xs text-slate-400">Sustainable City Intelligence</p>
           </div>
         </div>

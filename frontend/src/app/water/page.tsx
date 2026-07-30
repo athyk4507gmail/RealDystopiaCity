@@ -451,15 +451,16 @@ export default function WaterPage() {
                   <p>• Use a bucket instead of a hose for washing vehicles</p>
                   <p>• Report leaks immediately via the form below</p>
                 </div>
-              </div>
-
               {/* Citizen Q&A — Gemma AI */}
               <div className="rounded-xl border border-border p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-accent" />
                   <h3 className="font-medium text-sm">Ask AI about your water supply</h3>
-                  <span className="text-xs bg-accent/10 text-accent border border-accent/20 px-1.5 py-0.5 rounded ml-auto">Gemma 4</span>
+                  <span className="text-xs bg-accent/10 text-accent border border-accent/20 px-1.5 py-0.5 rounded ml-auto">
+                    Gemma 4
+                  </span>
                 </div>
+
                 <form onSubmit={handleAskQuestion} className="flex gap-2">
                   <input
                     id="citizen-qa-input"
@@ -469,6 +470,7 @@ export default function WaterPage() {
                     placeholder='e.g. "When will water come today?" or "Why was supply delayed?"'
                     className="flex-1 bg-white/5 border border-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent/50"
                   />
+
                   <button
                     id="citizen-qa-submit"
                     type="submit"
@@ -482,9 +484,14 @@ export default function WaterPage() {
                     )}
                   </button>
                 </form>
+
                 {qaAnswer && (
                   <ReasoningBox reasoning={qaAnswer} title="AI Answer — Gemma 4" />
                 )}
+
+                <p className="text-xs text-accent mt-3">
+                  Ask DystopiaCITY: &quot;How can I save water this summer?&quot;
+                </p>
               </div>
 
               <div className="rounded-xl border border-border p-4">
