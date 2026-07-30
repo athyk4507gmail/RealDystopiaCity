@@ -451,7 +451,12 @@ async def detect_leakage(image_b64: str) -> dict:
         "overflow, or broken pipeline. Respond in JSON: "
         '{ "is_leakage", "confidence", "type", "reasoning" }.'
     )
-    response = await gemma.generate(system, "Analyze this image for water leakage.", image_b64=image_b64)
+    response = await gemma.generate(
+        system,
+        "Analyze this image for water leakage.",
+        image_b64=image_b64,
+        fallback_type="water_leakage",
+    )
     return gemma.parse_json(response)
 
 

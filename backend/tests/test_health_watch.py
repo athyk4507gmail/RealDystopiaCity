@@ -100,7 +100,7 @@ def test_score_formula_string_present():
 # Prompt-echo detection regression tests (bug fixed 2026-07-29)
 # ---------------------------------------------------------------------------
 
-from app.services.health_watch import _is_prompt_echo, _clean_prose_response
+from app.services.health_watch import _is_prompt_echo, _clean_prose_response, _is_offline_fallback
 
 
 def test_prompt_echo_detects_role_prefix():
@@ -157,6 +157,14 @@ def test_clean_prose_response_returns_text_on_good_response():
     fallback = "Fallback explanation text."
     result   = _clean_prose_response(good, fallback)
     assert result == good
+
+
+def test_clean_prose_response_returns_fallback_on_offline_string():
+    """Offline Gemma fallback must be replaced with ward-specific prose."""
+    offline = "DystopiaCITY offline mode: configure GOOGLE_API_KEY or Ollama for live Gemma 4."
+    fallback = "Ward-specific causal explanation."
+    assert _is_offline_fallback(offline) is True
+    assert _clean_prose_response(offline, fallback) == fallback
 
 
 def test_clean_prose_response_handles_empty_string():

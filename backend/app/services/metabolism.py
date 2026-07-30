@@ -582,7 +582,7 @@ async def run_stress_test(db: Session, event_type: str, interventions: list = No
         applied_names = ", ".join([i["name"] for i in interventions])
         prompt += f" Interventions active: {applied_names}."
     try:
-        response = await gemma.generate(system, prompt)
+        response = await gemma.generate(system, prompt, fallback_type="metabolism")
         narration = gemma.parse_json(response).get("narrative", "")
     except Exception:
         narration = f"The {event_type} event triggered a cascading stress profile. Grid load rose to {res['vitals_after']['energy_load']}% forcing pumping pressures down to {res['vitals_after']['water_pressure']}%. Traffic delays surged globally across wards."

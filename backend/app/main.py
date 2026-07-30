@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import Base, SessionLocal, engine, migrate_schema
 from app.routers import (
+    agent,
     budget,
     chat,
     complaints,
@@ -111,6 +112,7 @@ app.include_router(chat.router)
 app.include_router(metabolism.router)
 app.include_router(health_watch.router)
 app.include_router(budget.router)
+app.include_router(agent.router)
 app.include_router(integrations.router)
 
 

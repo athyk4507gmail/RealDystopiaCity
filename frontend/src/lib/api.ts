@@ -226,6 +226,62 @@ export const api = {
         method: "POST",
       }),
   },
+  agent: {
+    chat: (message: string, history?: { role: string; content: string }[]) =>
+      fetchApi<AgentChatResponse>("/api/agent/chat", {
+        method: "POST",
+        body: JSON.stringify({ message, history: history ?? [] }),
+      }),
+    chatStream: async (
+      message: string,
+      history: { role: string; content: string }[] | undefined,
+      onProgress: (event: AgentProgressEvent) => void
+    ): Promise<AgentChatResponse> => {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      const res = await fetch(`${API_BASE}/api/agent/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, history: history ?? [] }),
+        cache: "no-store",
+      });
+      if (!res.ok || !res.body) {
+        throw new Error(`API error: ${res.status}`);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finalResult: AgentChatResponse | null = null;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() ?? "";
+        for (const chunk of chunks) {
+          const line = chunk
+            .split("\n")
+            .find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          const payload = JSON.parse(line.slice(6)) as AgentStreamEvent;
+          if (payload.type === "progress") {
+            onProgress(payload);
+          } else if (payload.type === "done") {
+            finalResult = {
+              answer: payload.answer,
+              trace: payload.trace,
+              steps_used: payload.steps_used,
+              truncated: payload.truncated,
+              timing: payload.timing,
+            };
+          } else if (payload.type === "error") {
+            throw new Error(payload.message || "Agent stream error");
+          }
+        }
+      }
+      if (!finalResult) throw new Error("Agent stream ended without a result");
+      return finalResult;
+    },
+  },
   health: () => fetchApi<{ status: string; ai_mode: string }>("/api/health"),
 };
 
@@ -592,6 +648,39 @@ export interface BudgetSummaryResponse {
   }>;
 }
 
+export interface AgentTraceStep {
+  step: number;
+  tool: string;
+  params: Record<string, unknown>;
+  result: Record<string, unknown>;
+  reasoning?: string;
+}
+
+export interface AgentChatResponse {
+  answer: string;
+  trace: AgentTraceStep[];
+  steps_used: number;
+  truncated: boolean;
+  timing?: {
+    total_ms?: number;
+    steps?: Array<Record<string, unknown>>;
+  };
+}
+
+export interface AgentProgressEvent {
+  type?: "progress";
+  phase: string;
+  step: number;
+  max_steps: number;
+  label: string;
+  tool?: string;
+  params?: Record<string, unknown>;
+}
+
+export type AgentStreamEvent =
+  | (AgentProgressEvent & { type: "progress" })
+  | (AgentChatResponse & { type: "done" })
+  | { type: "error"; message: string };
 export interface BlackSpot extends SourceTagged {
   name: string;
   lat: number;
