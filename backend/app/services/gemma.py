@@ -29,10 +29,11 @@ class GemmaService:
         user_prompt: str,
         json_mode: bool = True,
         image_b64: Optional[str] = None,
+        max_tokens: int = 1024,
     ) -> str:
         # 1. Generic OpenAI-compatible provider (highest priority when key+url are set)
         if self.gemma_api_key and self.gemma_api_base_url:
-            result = await self._call_openai_compatible(system_prompt, user_prompt)
+            result = await self._call_openai_compatible(system_prompt, user_prompt, max_tokens=max_tokens)
             if result:
                 return result
 
@@ -51,7 +52,7 @@ class GemmaService:
         return self._fallback(system_prompt, user_prompt, json_mode)
 
     async def _call_openai_compatible(
-        self, system_prompt: str, user_prompt: str
+        self, system_prompt: str, user_prompt: str, max_tokens: int = 1024
     ) -> Optional[str]:
         """Call any OpenAI-compatible chat completions endpoint.
         Works with: HuggingFace Inference API, OpenRouter, Groq, Together AI, vLLM, etc.
@@ -65,7 +66,7 @@ class GemmaService:
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": 0.3,
-            "max_tokens": 1024,
+            "max_tokens": max_tokens,
         }
         headers = {
             "Authorization": f"Bearer {self.gemma_api_key}",
@@ -92,6 +93,7 @@ class GemmaService:
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
                 print(f"[Gemma] Success - response length: {len(content)}")
+                print(f"[Gemma] Raw response:\n{content}")
                 return content
                 
         except httpx.TimeoutException:

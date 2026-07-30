@@ -1,16 +1,61 @@
 from pathlib import Path
+from typing import Any
 
-import cv2
 import numpy as np
-from ultralytics import YOLO
 
-# Loaded once at import time — never re-instantiate per request.
+# cv2 and ultralytics are optional — the server starts without them.
+# Functions that actually use them will raise a clear error at call time.
+try:
+    import cv2
+    _CV2_AVAILABLE = True
+except ImportError:
+    _CV2_AVAILABLE = False
+    cv2 = None  # type: ignore[assignment]
+
+try:
+    from ultralytics import YOLO as _YOLO
+    _YOLO_AVAILABLE = True
+except ImportError:
+    _YOLO_AVAILABLE = False
+    _YOLO = None  # type: ignore[assignment]
+
+
+def _require_cv2():
+    if not _CV2_AVAILABLE:
+        raise RuntimeError(
+            "cv2 (opencv-python) is not installed in this environment. "
+            "Install it with: pip install opencv-python-headless"
+        )
+
+
+def _require_yolo():
+    if not _YOLO_AVAILABLE:
+        raise RuntimeError(
+            "ultralytics is not installed in this environment. "
+            "Install it with: pip install ultralytics"
+        )
+
+# Model is loaded lazily — never at import time — so the server starts
+# even when ultralytics/cv2 are not installed.
 _MODEL_CANDIDATES = [
     Path(__file__).resolve().parent.parent.parent / "yolov8n.pt",
     Path("yolov8n.pt"),
 ]
 _model_path = next((p for p in _MODEL_CANDIDATES if p.exists()), _MODEL_CANDIDATES[-1])
-model = YOLO(str(_model_path))
+_model_instance = None
+
+
+def _get_model():
+    global _model_instance
+    if _model_instance is None:
+        _require_yolo()
+        _model_instance = _YOLO(str(_model_path))
+    return _model_instance
+
+
+# Alias used by the rest of the file (was `model` before)
+def _model_call(image, *, conf: float, imgsz: int):
+    return _get_model()(image, conf=conf, imgsz=imgsz, verbose=False)
 
 VEHICLE_CLASSES = {2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
 PERSON_CLASS = {0: "person"}
@@ -133,7 +178,7 @@ def _parse_results(results) -> dict:
 
 
 def _run_yolo(image, *, conf: float, imgsz: int) -> dict:
-    results = model(image, conf=conf, imgsz=imgsz, verbose=False)[0]
+    results = _model_call(image, conf=conf, imgsz=imgsz)[0]
     return _parse_results(results)
 
 

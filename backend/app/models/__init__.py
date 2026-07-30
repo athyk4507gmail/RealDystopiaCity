@@ -36,6 +36,10 @@ class WaterComplaint(Base):
     description: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="open")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    resolution_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    assigned_team: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    is_synthetic_seed: Mapped[bool] = mapped_column(Boolean, default=False)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
 
@@ -53,6 +57,11 @@ class WaterSchedule(Base):
     reasoning: Mapped[str] = mapped_column(Text)
     sub_localities: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, default=list)
     schedule_date: Mapped[date] = mapped_column(Date)
+    fairness_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    days_since_supply: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    forced_supply: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=False)
+    overridden: Mapped[bool] = mapped_column(Boolean, default=False)
+    override_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class BusRoute(Base):

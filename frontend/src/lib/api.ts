@@ -1,26 +1,48 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
+async function fetchApi<T>(path: string, options?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const url = `${API_BASE}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw new Error(`API error: ${res.status}`);
+  const timeoutMs = options?.timeoutMs ?? 60000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      credentials: "include",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      throw new Error(`API error: ${res.status}`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 export const api = {
   water: {
     wards: () => fetchApi<Ward[]>("/api/water/wards"),
     schedule: () => fetchApi<WaterSchedule[]>("/api/water/schedule"),
-    generateSchedule: () => fetchApi<WaterSchedule[]>("/api/water/schedule/generate", { method: "POST" }),
+    generateSchedule: () =>
+      fetchApi<WaterSchedule[]>("/api/water/schedule/generate", {
+        method: "POST",
+        timeoutMs: 180000,
+      }),
+    fairnessWarnings: () =>
+      fetchApi<{ ward_name: string; days_since_supply: number; limit_days: number }[]>(
+        "/api/water/fairness/warnings"
+      ),
+    overrideSchedule: (wardId: number, data: { supply_today: boolean; override_reason: string }) =>
+      fetchApi<WaterSchedule>(`/api/water/schedule/${wardId}/override`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     demand: (wardId: number) => fetchApi<DemandPrediction[]>(`/api/water/demand/${wardId}`),
     complaints: (wardId?: number, status?: string) => {
       const params = new URLSearchParams();
@@ -38,8 +60,8 @@ export const api = {
       return res.json();
     },
     // AI endpoints
-    triageComplaint: (data: { description: string; type: string }) =>
-      fetchApi<{ severity: string; category: string; suggested_response: string }>(
+    triageComplaint: (data: { description: string; type: string; ward_id?: number; ward_name?: string }) =>
+      fetchApi<TriageResult>(
         "/api/water/ai/triage",
         { method: "POST", body: JSON.stringify(data) }
       ),
@@ -130,8 +152,41 @@ export const api = {
   },
   metabolism: {
     vitals: () => fetchApi<CityVitals>("/api/metabolism/vitals"),
-    stressTest: (event: string) =>
-      fetchApi<StressTestResult>(`/api/metabolism/stress-test/${event}`, { method: "POST" }),
+    resilienceScore: (weights?: Record<string, number>, vitals?: Partial<CityVitals>) =>
+      fetchApi<ResilienceScoreResult>("/api/metabolism/resilience-score", {
+        method: "POST",
+        body: JSON.stringify({
+          weights,
+          vitals_snapshot: vitals
+            ? {
+                water_pressure: vitals.water_pressure,
+                traffic_flow: vitals.traffic_flow,
+                energy_load: vitals.energy_load,
+                air_quality_index: vitals.air_quality_index,
+              }
+            : undefined,
+        }),
+      }),
+    stressTest: (event: string, compare = false) =>
+      fetchApi<StressTestCompareResult | StressTestResult>(
+        `/api/metabolism/stress-test/${event}?compare=${compare}`,
+        { method: "POST" },
+      ),
+    causalGraph: (scenario: string) =>
+      fetchApi<{ nodes: CausalGraphNode[]; edges: CausalGraphEdge[] }>(
+        `/api/metabolism/causal-graph?scenario=${scenario}`,
+      ),
+    causalGraphTrace: (scenario: string, nodeId: string, deltaPct: number) =>
+      fetchApi<CausalTraceResult>("/api/metabolism/causal-graph/trace", {
+        method: "POST",
+        body: JSON.stringify({ scenario, node_id: nodeId, delta_pct: deltaPct }),
+      }),
+  },
+  healthWatch: {
+    wards: () => fetchApi<HealthWatchWard[]>("/api/health-watch/wards"),
+    wardDetail: (wardId: number) => fetchApi<HealthWatchWardDetail>(`/api/health-watch/wards/${wardId}`),
+    refresh: () => fetchApi<HealthWatchRefreshResult>("/api/health-watch/refresh", { method: "POST" }),
+    cacheStatus: () => fetchApi<{ today: string; warmed_ward_ids: number[] }>("/api/health-watch/cache-status"),
   },
   integrations: {
     weather: (lat: number, lng: number) => fetchApi<WeatherPayload>(`/api/integrations/weather?lat=${lat}&lng=${lng}`),
@@ -209,7 +264,32 @@ export interface WaterSchedule extends SourceTagged {
   supply_end_time: string;
   priority: string;
   reasoning: string;
+  fairness_score?: number;
+  days_since_supply?: number;
+  forced_supply?: boolean;
+  overridden?: boolean;
+  override_reason?: string | null;
   sub_localities: SubLocality[];
+}
+
+export interface TriagePrecedentCase {
+  description: string;
+  resolution_comment: string;
+  duration_hours: number | null;
+  assigned_team: string;
+  scope: "same_ward" | "citywide";
+}
+
+export interface TriageResult {
+  severity: string;
+  recommended_team: string;
+  eta_hours_low: number;
+  eta_hours_high: number;
+  reasoning: string;
+  based_on_cases: number;
+  retrieved_cases?: TriagePrecedentCase[];
+  fallback?: boolean;
+  error?: string;
 }
 
 export interface SubLocality {
@@ -379,6 +459,33 @@ export interface CityVitals {
   source_type?: "live" | "reported" | "estimated";
   source_label?: "Live" | "Reported" | "Estimated";
   source_detail?: string;
+  sources?: Record<string, string>;
+  source_details?: Record<string, string>;
+}
+
+export interface ResilienceScoreResult {
+  total_score: number;
+  sub_scores: Record<string, number>;
+  weights_used: Record<string, number>;
+  sub_score_sources?: Record<string, string>;
+  formula: string;
+}
+
+export interface StressTestCascadeStep {
+  step: number;
+  node: string;
+  action: string;
+  coeff_used?: string;
+  coeff_value?: number;
+  source_note?: string;
+}
+
+export interface HistoricalValidation {
+  title: string;
+  date: string;
+  description: string;
+  source_url: string;
+  model_comparison: string;
 }
 
 export interface StressTestResult {
@@ -388,11 +495,42 @@ export interface StressTestResult {
   vitals_before: CityVitals;
   vitals_after: CityVitals;
   resilience_index: number;
+  resilience_before?: number;
+  resilience_after?: number;
   narrative: string;
-  cascade_steps: { step: number; node: string; action: string }[];
+  cascade_steps: StressTestCascadeStep[];
+  historical_validation?: HistoricalValidation | null;
   source_type?: "live" | "reported" | "estimated";
   source_label?: "Live" | "Reported" | "Estimated";
   source_detail?: string;
+}
+
+export interface StressTestCompareResult {
+  event_type: string;
+  do_nothing: StressTestResult;
+  with_intervention: StressTestResult;
+  resilience_score_delta: number;
+  interventions_applied: string[];
+}
+
+export interface CausalGraphNode {
+  id: string;
+  label: string;
+  category: string;
+}
+
+export interface CausalGraphEdge {
+  source: string;
+  target: string;
+  coefficient: number;
+  justification: string;
+}
+
+export interface CausalTraceResult {
+  steps: { step: number; node_id: string; value_change_pct: number; via_edge?: string }[];
+  final_resilience_delta: number;
+  clamped?: boolean;
+  clamp_reason?: string;
 }
 
 export interface ChatResponse {
@@ -543,4 +681,117 @@ export interface JunctionCaptureResult {
   vehicle_count: number;
   detections: DetectionBox[];
   timestamp: string;
+}
+
+// ---------------------------------------------------------------------------
+// Health Watch
+// ---------------------------------------------------------------------------
+
+export type HealthWatchTrend      = "up" | "down" | "flat";
+export type HealthWatchSourceType = "live" | "reported" | "estimated" | "simulated";
+
+export interface HealthWatchSourceBadge {
+  source_type:   HealthWatchSourceType;
+  source_label:  string;
+  source_detail: string;
+}
+
+export interface HealthWatchScoreComponent {
+  raw_value:    number | null;
+  normalised:   number;
+  weighted:     number;
+  weight:       number;
+  ceiling?:     number;
+  // heat_index only
+  anomaly_c?:       number;
+  ceiling_anomaly?: number;
+  // metabolism_stress only
+  stress_input?: number;
+}
+
+export interface HealthWatchScoring {
+  score:     number;
+  score_raw: number;
+  components: {
+    stagnant_reports:  HealthWatchScoreComponent;
+    heat_index:        HealthWatchScoreComponent;
+    complaint_density: HealthWatchScoreComponent;
+    metabolism_stress: HealthWatchScoreComponent;
+  };
+  weights: Record<string, number>;
+  formula: string;
+}
+
+export interface HealthWatchFeatures {
+  stagnant_reports_7d:             number;
+  temp_c:                          number;
+  temp_anomaly_c:                  number;
+  humidity_pct:                    number | null;
+  rainfall_7d_mm:                  number;
+  complaint_count_7d:              number;
+  complaint_categories:            Record<string, number>;
+  metabolism_water_delta_pct:      number;
+  metabolism_water_pressure_pct:   number;
+}
+
+export interface HealthWatchMetabolismLink {
+  active_stress_test: string | null;
+  water_supply_delta: number;
+  water_pressure_pct: number;
+  detail:             string;
+  source_type:        HealthWatchSourceType;
+  source_label:       string;
+  source_detail:      string;
+}
+
+export interface HealthWatchTrendPoint {
+  date:  string;
+  score: number;
+}
+
+export interface HealthWatchGemma {
+  explanation:      string;
+  intervention:     string;
+  generated_at:     string;
+  gemma_elapsed_ms?: number;
+  prompts_debug: {
+    causal_system:       string;
+    causal_user:         string;
+    intervention_system: string;
+    intervention_user:   string;
+  };
+}
+
+/** Returned by GET /api/health-watch/wards (list — no Gemma) */
+export interface HealthWatchWard {
+  ward_id:   number;
+  ward_name: string;
+  lat:       number;
+  lng:       number;
+  risk_score:   number;
+  trend:        HealthWatchTrend;
+  trend_series: HealthWatchTrendPoint[];
+  scoring:      HealthWatchScoring;
+  features:     HealthWatchFeatures;
+  metabolism_link: HealthWatchMetabolismLink;
+  source_badges: {
+    weather:          HealthWatchSourceBadge;
+    stagnant_reports: HealthWatchSourceBadge;
+    complaints:       HealthWatchSourceBadge;
+    metabolism:       HealthWatchSourceBadge;
+  };
+  gemma: null;
+}
+
+/** Returned by GET /api/health-watch/wards/{id} (full detail + Gemma) */
+export interface HealthWatchWardDetail extends Omit<HealthWatchWard, "gemma"> {
+  gemma:       HealthWatchGemma | null;
+  gemma_error: string | null;
+}
+
+export interface HealthWatchRefreshResult {
+  refreshed_at:    string;
+  wards_computed:  number;
+  trending_up:     number;
+  high_risk_wards: number;
 }

@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, CartesianGrid,
 } from "recharts";
-import { RefreshCw, Upload, ChevronDown, ChevronRight, Droplets, Thermometer, Newspaper, Building2, ExternalLink, MessageSquare, Sparkles, Send } from "lucide-react";
+import { Upload, ChevronDown, ChevronRight, Droplets, Thermometer, Newspaper, Building2, ExternalLink, MessageSquare, Send } from "lucide-react";
 import { api, Ward, WaterSchedule, DemandPrediction } from "@/lib/api";
 import type { WaterLevelReading, WeatherReading } from "@/lib/scrapers/types";
 import type { WaterNewsItem } from "@/lib/scrapers/waterNews";
@@ -15,12 +15,49 @@ import MapboxMap from "@/components/MapboxMap";
 import StatCard from "@/components/StatCard";
 import PriorityBadge from "@/components/PriorityBadge";
 import ReasoningBox from "@/components/ReasoningBox";
+import GemmaBanner from "@/components/water/GemmaBanner";
 import DataSourceBadge from "@/components/DataSourceBadge";
 import LiveSourceBanner from "@/components/LiveSourceBanner";
 import LoadingSkeleton, { StatCardSkeleton, MapSkeleton } from "@/components/LoadingSkeleton";
 import DataError from "@/components/DataError";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { sanitizeComplaintDescription } from "@/lib/validation";
+
+function formatLitres(value: number | undefined): string {
+  if (value == null) return "—";
+  return Math.round(value).toLocaleString("en-IN");
+}
+
+const MAP_LEGEND = [
+  { color: "#ef4444", label: "Overdue — Priority" },
+  { color: "#eab308", label: "Scheduled" },
+  { color: "#22c55e", label: "Waiting" },
+  { color: "#6b7280", label: "No schedule data" },
+];
+
+function wardMapStyle(sched: WaterSchedule | undefined) {
+  if (!sched) return { fill: "#6b7280", line: "#9ca3af" };
+  if (sched.forced_supply) return { fill: "#ef4444", line: "#f87171" };
+  if (sched.supply_today) return { fill: "#eab308", line: "#facc15" };
+  return { fill: "#22c55e", line: "#4ade80" };
+}
+
+function wardPopupHtml(ward: Ward, sched: WaterSchedule | undefined) {
+  const status = !sched
+    ? "No data"
+    : sched.forced_supply && sched.supply_today
+    ? "Overdue — Priority"
+    : sched.supply_today
+    ? "Scheduled"
+    : "Waiting";
+  return `<div style="font-size:12px;line-height:1.5">
+    <strong>${ward.name}</strong><br/>
+    <b>Status:</b> ${status}<br/>
+    <b>Allocation:</b> ${sched?.supply_today ? `${formatLitres(sched.allocation_litres)} L` : "—"}<br/>
+    <b>Window:</b> ${sched?.supply_today ? `${sched.supply_start_time}–${sched.supply_end_time}` : "—"}<br/>
+    <span style="color:#94a3b8">${sched?.reasoning ?? "No reasoning available"}</span>
+  </div>`;
+}
 
 function WardScheduleCard({ schedule }: { schedule: WaterSchedule }) {
   const [open, setOpen] = useState(false);
@@ -42,7 +79,7 @@ function WardScheduleCard({ schedule }: { schedule: WaterSchedule }) {
         </div>
       )}
       <div className="text-xs text-slate-400">
-        {schedule.allocation_litres?.toLocaleString("en-IN")}L · {schedule.duration_hours}h
+        {formatLitres(schedule.allocation_litres)}L · {schedule.duration_hours}h
       </div>
       <ReasoningBox reasoning={schedule.reasoning} />
       <div className="border-t border-border pt-2">
@@ -61,7 +98,7 @@ function WardScheduleCard({ schedule }: { schedule: WaterSchedule }) {
                 <span>
                   #{loc.priority_rank} {loc.name}
                 </span>
-                <span className="text-slate-400">{loc.allocation_litres.toLocaleString("en-IN")} L</span>
+                <span className="text-slate-400">{formatLitres(loc.allocation_litres)} L</span>
               </div>
             ))}
           </div>
@@ -156,18 +193,6 @@ export default function WaterPage() {
       });
   }, []);
 
-  const regenerate = async () => {
-    setLoading(true);
-    try {
-      const s = await api.water.generateSchedule();
-      setSchedule(s);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to regenerate schedule");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const wardDemand = async (id: number) => {
     setSelectedWard(id);
     try {
@@ -228,14 +253,23 @@ export default function WaterPage() {
 
   const wardPolygons = wards.map((w) => {
     const sched = schedule.find((s) => s.ward_id === w.id);
-    const priority = sched?.priority || "Low";
-    const color = priority === "High" ? "#ef4444" : priority === "Medium" ? "#f59e0b" : "#10b981";
+    const colors = wardMapStyle(sched);
+    const ring = w.polygon?.length
+      ? w.polygon
+      : [
+          [w.lng - 0.012, w.lat - 0.01],
+          [w.lng + 0.012, w.lat - 0.01],
+          [w.lng + 0.012, w.lat + 0.01],
+          [w.lng - 0.012, w.lat + 0.01],
+          [w.lng - 0.012, w.lat - 0.01],
+        ];
     return {
       id: w.id,
-      coordinates: [w.polygon || [[w.lng - 0.004, w.lat - 0.004], [w.lng + 0.004, w.lat - 0.004], [w.lng + 0.004, w.lat + 0.004], [w.lng - 0.004, w.lat + 0.004], [w.lng - 0.004, w.lat - 0.004]]],
-      fillColor: color,
-      fillOpacity: 0.35,
-      lineColor: color,
+      coordinates: [ring],
+      fillColor: colors.fill,
+      fillOpacity: 0.5,
+      lineColor: colors.line,
+      popup: wardPopupHtml(w, sched),
     };
   });
 
@@ -245,6 +279,8 @@ export default function WaterPage() {
     <ErrorBoundary fallbackTitle="Water module failed to render">
       <div className="p-6 space-y-6">
         {error && <DataError message={error} onRetry={load} />}
+
+        <GemmaBanner />
 
         <div className="flex items-center justify-between">
           <div>
@@ -283,14 +319,6 @@ export default function WaterPage() {
               className={`px-4 py-2 rounded-lg text-sm ${tab === "citizen" ? "bg-accent text-black" : "bg-white/5"}`}
             >
               Citizen
-            </button>
-            <button
-              onClick={regenerate}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              Regenerate Schedule
             </button>
             <Link
               href="/water/login?role=municipality"
@@ -393,7 +421,7 @@ export default function WaterPage() {
               {loading ? (
                 <MapSkeleton className="h-full w-full" />
               ) : (
-                <MapboxMap polygons={wardPolygons} zoom={10.5} />
+                <MapboxMap polygons={wardPolygons} zoom={10.5} legendItems={MAP_LEGEND} />
               )}
             </div>
             <div className="space-y-3 max-h-[400px] overflow-y-auto">
@@ -436,7 +464,7 @@ export default function WaterPage() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-400">Allocation</span>
-                      <span>{wardSchedule.allocation_litres?.toLocaleString("en-IN")} litres</span>
+                      <span>{formatLitres(wardSchedule.allocation_litres)} litres</span>
                     </div>
                     <ReasoningBox reasoning={wardSchedule.reasoning} />
                   </div>
@@ -451,6 +479,8 @@ export default function WaterPage() {
                   <p>• Use a bucket instead of a hose for washing vehicles</p>
                   <p>• Report leaks immediately via the form below</p>
                 </div>
+              </div>
+
               {/* Citizen Q&A — Gemma AI */}
               <div className="rounded-xl border border-border p-4 space-y-3">
                 <div className="flex items-center gap-2">

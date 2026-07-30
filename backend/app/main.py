@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from app.routers import (
     chat,
     complaints,
     gemma,
+    health_watch,
     integrations,
     metabolism,
     risk_zones,
@@ -29,9 +31,23 @@ from app.services.live_camera import live_camera_background_loop
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
+logger = logging.getLogger("dystopiacity")
+
+
+def _mask_secret(value: str) -> str:
+    if not value:
+        return "EMPTY"
+    return f"SET ({value[:8]}...)"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info(
+        "Gemma config at startup — GOOGLE_API_KEY=%s GEMMA_API_KEY=%s GEMMA_API_BASE_URL=%s",
+        _mask_secret(settings.google_api_key),
+        _mask_secret(settings.gemma_api_key),
+        settings.gemma_api_base_url or "EMPTY",
+    )
     Base.metadata.create_all(bind=engine)
     migrate_schema()
 
@@ -93,6 +109,7 @@ app.include_router(chat.router)
 
 # Other modules
 app.include_router(metabolism.router)
+app.include_router(health_watch.router)
 app.include_router(budget.router)
 app.include_router(integrations.router)
 
@@ -110,5 +127,5 @@ def health():
         "status": "ok",
         "platform": "DystopiaCITY",
         "gemma_model": settings.gemma_model_id,
-        "ai_mode": "live" if settings.google_api_key else "fallback",
+        "ai_mode": "live" if (settings.google_api_key or settings.gemma_api_key) else "fallback",
     }

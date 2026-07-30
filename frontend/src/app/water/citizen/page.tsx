@@ -20,6 +20,9 @@ import {
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DataError from "@/components/DataError";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
+import ReasoningBox from "@/components/ReasoningBox";
+import GemmaBanner from "@/components/water/GemmaBanner";
+import { api, type WaterSchedule } from "@/lib/api";
 import type { PipelineAccount } from "@/lib/water/mockAccounts";
 import { MOCK_ACCOUNTS, getAccount } from "@/lib/water/mockAccounts";
 import type { ScheduledEvent } from "@/lib/water/mockSchedules";
@@ -324,6 +327,15 @@ export default function CitizenDashboardPage() {
   const [issuesLoading, setIssuesLoading] = useState(true);
   const [issuesError, setIssuesError] = useState<string | null>(null);
 
+  // Ward supply schedule (fairness-based reasoning from API)
+  const [wardSchedule, setWardSchedule] = useState<WaterSchedule | null>(null);
+
+  const normalizeWardName = (zone: string) =>
+    zone.replace(/shivajinagar/i, "Shivaji Nagar").replace(/malleswaram/i, "Malleshwaram");
+
+  const formatLitres = (value: number | undefined) =>
+    value == null ? "—" : Math.round(value).toLocaleString("en-IN");
+
   // Ward Announcements state
   const [wardAnnouncements, setWardAnnouncements] = useState<WaterAnnouncement[]>([]);
 
@@ -390,6 +402,16 @@ export default function CitizenDashboardPage() {
       fetchWardIssues();
     }
   }, [authLoading, selectedWard, fetchWardIssues]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    api.water.schedule().then((schedules) => {
+      const match = schedules.find(
+        (s) => s.ward_name.toLowerCase() === normalizeWardName(selectedWard).toLowerCase(),
+      );
+      setWardSchedule(match ?? null);
+    }).catch(() => setWardSchedule(null));
+  }, [authLoading, selectedWard]);
 
   // -------------------------------------------------------------------------
   // Account derives paid state
@@ -467,6 +489,8 @@ export default function CitizenDashboardPage() {
   return (
     <ErrorBoundary fallbackTitle="Citizen Dashboard failed to render">
       <div className="p-6 space-y-6">
+        <GemmaBanner />
+
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -552,6 +576,20 @@ export default function CitizenDashboardPage() {
               </div>
             )}
           </div>
+
+          {wardSchedule && (
+            <div className="border-t border-border/50 pt-4 space-y-2">
+              <p className="text-sm text-slate-300">
+                Today&apos;s supply:{" "}
+                <span className={wardSchedule.supply_today ? "text-emerald-400" : "text-yellow-400"}>
+                  {wardSchedule.supply_today
+                    ? `${wardSchedule.supply_start_time} – ${wardSchedule.supply_end_time} · ${formatLitres(wardSchedule.allocation_litres)} litres`
+                    : "Not scheduled"}
+                </span>
+              </p>
+              <ReasoningBox reasoning={wardSchedule.reasoning} />
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

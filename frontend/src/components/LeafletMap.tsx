@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polygon, Polyline, CircleMarker, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { MapLine, MapMarker, MapPolygon } from "./MapboxMap";
+import type { MapLine, MapMarker, MapPolygon, MapLegendItem } from "./MapboxMap";
 
 // Fix default marker icons in Next.js
 const defaultIcon = L.icon({
@@ -32,6 +32,7 @@ interface LeafletMapProps {
   polygons?: MapPolygon[];
   heatmapPoints?: { lat: number; lng: number; weight: number }[];
   className?: string;
+  legendItems?: MapLegendItem[];
 }
 
 export default function LeafletMap({
@@ -42,9 +43,10 @@ export default function LeafletMap({
   polygons = [],
   heatmapPoints = [],
   className = "h-full w-full",
+  legendItems = [],
 }: LeafletMapProps) {
   return (
-    <div className={className}>
+    <div className={`relative ${className}`}>
       <MapContainer
         center={[center[1], center[0]]}
         zoom={zoom}
@@ -64,10 +66,16 @@ export default function LeafletMap({
             pathOptions={{
               color: poly.lineColor || "#06b6d4",
               fillColor: poly.fillColor || "#06b6d4",
-              fillOpacity: poly.fillOpacity ?? 0.35,
+              fillOpacity: poly.fillOpacity ?? 0.45,
               weight: 2,
             }}
-          />
+          >
+            {poly.popup && (
+              <Popup>
+                <div dangerouslySetInnerHTML={{ __html: poly.popup }} />
+              </Popup>
+            )}
+          </Polygon>
         ))}
 
         {lines.map((line) => (
@@ -101,6 +109,19 @@ export default function LeafletMap({
           </Marker>
         ))}
       </MapContainer>
+      {legendItems.length > 0 && (
+        <div className="absolute bottom-3 left-3 z-[1000] rounded-lg border border-border bg-card/95 p-3 text-xs shadow-lg">
+          <p className="font-medium text-slate-300 mb-2">Today&apos;s Supply Status</p>
+          <div className="space-y-1.5">
+            {legendItems.map((item) => (
+              <div key={item.label} className="flex items-center gap-2 text-slate-400">
+                <span className="w-3 h-3 rounded-sm border border-white/20" style={{ backgroundColor: item.color }} />
+                {item.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
