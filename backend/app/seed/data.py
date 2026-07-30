@@ -11,6 +11,7 @@ from app.models import (
     Ward,
     WaterComplaint,
 )
+from app.seed.budget_data import seed_budget_data
 from app.services.canonical_locations import get_canonical_roads, get_canonical_wards, get_household_size
 
 
@@ -53,6 +54,9 @@ def _seed_complaints(db: Session) -> None:
 
 
 def seed_database(db: Session) -> None:
+    # Seed budget data first (this can run independently)
+    seed_budget_data(db)
+    
     if db.query(Ward).count() > 0:
         if db.query(WaterComplaint).count() < 10:
             _seed_complaints(db)
@@ -176,3 +180,6 @@ def seed_database(db: Session) -> None:
 
     _seed_complaints(db)
     db.commit()
+    
+    # Seed budget data
+    seed_budget_data(db)

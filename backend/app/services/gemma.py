@@ -70,15 +70,35 @@ class GemmaService:
         headers = {
             "Authorization": f"Bearer {self.gemma_api_key}",
             "Content-Type": "application/json",
+            "HTTP-Referer": "http://localhost:3010",
+            "X-Title": "CityPulse AI",
         }
+        
+        # Log request details (masked key)
+        masked_key = self.gemma_api_key[:10] + "..."
+        print(f"[Gemma] Calling {url}")
+        print(f"[Gemma] Model: {self.model_id}")
+        print(f"[Gemma] Key: {masked_key}")
+        
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(url, json=payload, headers=headers)
+                print(f"[Gemma] Response status: {resp.status_code}")
+                
                 if resp.status_code != 200:
+                    print(f"[Gemma] Error response: {resp.text[:200]}")
                     return None
+                
                 data = resp.json()
-                return data["choices"][0]["message"]["content"]
-        except Exception:
+                content = data["choices"][0]["message"]["content"]
+                print(f"[Gemma] Success - response length: {len(content)}")
+                return content
+                
+        except httpx.TimeoutException:
+            print(f"[Gemma] TIMEOUT: Request to {url} timed out after 30s")
+            return None
+        except Exception as e:
+            print(f"[Gemma] Exception: {type(e).__name__}: {e}")
             return None
 
     async def _call_google(

@@ -120,3 +120,30 @@ class ChatMessage(Base):
     content: Mapped[str] = mapped_column(Text)
     module: Mapped[str] = mapped_column(String(50), default="global")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+class BudgetProject(Base):
+    __tablename__ = "budget_projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ward_id: Mapped[int] = mapped_column(Integer)
+    project_name: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(50))  # road_repair, water_pipeline, streetlight, drainage, park_maintenance
+    allocated_amount: Mapped[float] = mapped_column(Float)  # in INR
+    spent_amount: Mapped[float] = mapped_column(Float)  # in INR
+    percent_complete: Mapped[float] = mapped_column(Float)  # 0-100
+    start_date: Mapped[date] = mapped_column(Date)
+    expected_end_date: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active, completed, stalled, cancelled
+    last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Gemma-generated summaries (cached to avoid repeated API calls)
+    gemma_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    gemma_summary_generated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    gemma_anomaly_flag: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # delayed, stalled, inconsistent, none
+    gemma_anomaly_explanation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    gemma_anomaly_generated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # Data source tracking (real vs mock)
+    data_source: Mapped[str] = mapped_column(String(50), default="mock")  # real_scraped, mock_realistic
+    source_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    scraped_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

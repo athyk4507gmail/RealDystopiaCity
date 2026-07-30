@@ -126,6 +126,33 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message, module }),
     }),
+  gemma: {
+    chat: (message: string, systemPrompt?: string) =>
+      fetchApi<GemmaResponse>("/api/gemma/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          message,
+          system_prompt: systemPrompt || "You are CityPulse AI, a helpful assistant.",
+        }),
+      }),
+  },
+  budgetWatch: {
+    projects: (wardId?: number, category?: string, status?: string) => {
+      const params = new URLSearchParams();
+      if (wardId) params.set("ward_id", String(wardId));
+      if (category) params.set("category", category);
+      if (status) params.set("status", status);
+      const query = params.toString();
+      return fetchApi<BudgetProjectResponse[]>(`/api/budget-watch/projects${query ? `?${query}` : ""}`);
+    },
+    project: (projectId: number) =>
+      fetchApi<BudgetProjectResponse>(`/api/budget-watch/projects/${projectId}`),
+    summary: () => fetchApi<BudgetSummaryResponse>("/api/budget-watch/summary"),
+    regenerateSummary: (projectId: number) =>
+      fetchApi<BudgetProjectResponse>(`/api/budget-watch/projects/${projectId}/regenerate-summary`, {
+        method: "POST",
+      }),
+  },
   health: () => fetchApi<{ status: string; ai_mode: string }>("/api/health"),
 };
 
@@ -354,6 +381,59 @@ export interface ChatResponse {
   role: string;
   content: string;
   module: string;
+}
+
+export interface GemmaResponse {
+  reply: string;
+}
+
+export interface BudgetProjectResponse {
+  id: number;
+  ward_id: number;
+  project_name: string;
+  category: string;
+  allocated_amount: number;
+  spent_amount: number;
+  percent_complete: number;
+  start_date: string;
+  expected_end_date: string;
+  status: string;
+  last_updated: string;
+  created_at: string;
+  gemma_summary?: string;
+  gemma_summary_generated_at?: string;
+  gemma_anomaly_flag?: string;
+  gemma_anomaly_explanation?: string;
+  gemma_anomaly_generated_at?: string;
+  data_source: string;
+  source_url?: string;
+  scraped_at?: string;
+  related_complaints: Array<{
+    id: number;
+    type: string;
+    description: string;
+    status: string;
+    created_at: string;
+  }>;
+  days_overdue?: number;
+  progress_since_last_update?: number;
+}
+
+export interface BudgetSummaryResponse {
+  total_projects: number;
+  total_allocated: number;
+  total_spent: number;
+  overall_completion_rate: number;
+  projects_delayed: number;
+  projects_flagged: number;
+  projects_stalled: number;
+  wards_covered: number;
+  average_delay_days?: number;
+  top_categories: Array<{
+    category: string;
+    count: number;
+    total_allocated: number;
+  }>;
 }
 
 export interface BlackSpot extends SourceTagged {
