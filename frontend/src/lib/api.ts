@@ -109,8 +109,35 @@ export const api = {
   },
   metabolism: {
     vitals: () => fetchApi<CityVitals>("/api/metabolism/vitals"),
-    stressTest: (event: string) =>
-      fetchApi<StressTestResult>(`/api/metabolism/stress-test/${event}`, { method: "POST" }),
+    resilienceScore: (weights?: Record<string, number>, vitals?: Partial<CityVitals>) =>
+      fetchApi<ResilienceScoreResult>("/api/metabolism/resilience-score", {
+        method: "POST",
+        body: JSON.stringify({
+          weights,
+          vitals_snapshot: vitals
+            ? {
+                water_pressure: vitals.water_pressure,
+                traffic_flow: vitals.traffic_flow,
+                energy_load: vitals.energy_load,
+                air_quality_index: vitals.air_quality_index,
+              }
+            : undefined,
+        }),
+      }),
+    stressTest: (event: string, compare = false) =>
+      fetchApi<StressTestCompareResult | StressTestResult>(
+        `/api/metabolism/stress-test/${event}?compare=${compare}`,
+        { method: "POST" },
+      ),
+    causalGraph: (scenario: string) =>
+      fetchApi<{ nodes: CausalGraphNode[]; edges: CausalGraphEdge[] }>(
+        `/api/metabolism/causal-graph?scenario=${scenario}`,
+      ),
+    causalGraphTrace: (scenario: string, nodeId: string, deltaPct: number) =>
+      fetchApi<CausalTraceResult>("/api/metabolism/causal-graph/trace", {
+        method: "POST",
+        body: JSON.stringify({ scenario, node_id: nodeId, delta_pct: deltaPct }),
+      }),
   },
   healthWatch: {
     wards: () => fetchApi<HealthWatchWard[]>("/api/health-watch/wards"),
@@ -337,6 +364,33 @@ export interface CityVitals {
   source_type?: "live" | "reported" | "estimated";
   source_label?: "Live" | "Reported" | "Estimated";
   source_detail?: string;
+  sources?: Record<string, string>;
+  source_details?: Record<string, string>;
+}
+
+export interface ResilienceScoreResult {
+  total_score: number;
+  sub_scores: Record<string, number>;
+  weights_used: Record<string, number>;
+  sub_score_sources?: Record<string, string>;
+  formula: string;
+}
+
+export interface StressTestCascadeStep {
+  step: number;
+  node: string;
+  action: string;
+  coeff_used?: string;
+  coeff_value?: number;
+  source_note?: string;
+}
+
+export interface HistoricalValidation {
+  title: string;
+  date: string;
+  description: string;
+  source_url: string;
+  model_comparison: string;
 }
 
 export interface StressTestResult {
@@ -346,11 +400,42 @@ export interface StressTestResult {
   vitals_before: CityVitals;
   vitals_after: CityVitals;
   resilience_index: number;
+  resilience_before?: number;
+  resilience_after?: number;
   narrative: string;
-  cascade_steps: { step: number; node: string; action: string }[];
+  cascade_steps: StressTestCascadeStep[];
+  historical_validation?: HistoricalValidation | null;
   source_type?: "live" | "reported" | "estimated";
   source_label?: "Live" | "Reported" | "Estimated";
   source_detail?: string;
+}
+
+export interface StressTestCompareResult {
+  event_type: string;
+  do_nothing: StressTestResult;
+  with_intervention: StressTestResult;
+  resilience_score_delta: number;
+  interventions_applied: string[];
+}
+
+export interface CausalGraphNode {
+  id: string;
+  label: string;
+  category: string;
+}
+
+export interface CausalGraphEdge {
+  source: string;
+  target: string;
+  coefficient: number;
+  justification: string;
+}
+
+export interface CausalTraceResult {
+  steps: { step: number; node_id: string; value_change_pct: number; via_edge?: string }[];
+  final_resilience_delta: number;
+  clamped?: boolean;
+  clamp_reason?: string;
 }
 
 export interface ChatResponse {
