@@ -132,7 +132,10 @@ async def generate_schedule(db: Session) -> list[dict]:
         prompt = f"Ward data: {ward_data}"
         try:
             import asyncio
-            response = await asyncio.wait_for(gemma.generate(WATER_SYSTEM_PROMPT, prompt), timeout=8.0)
+            response = await asyncio.wait_for(
+                gemma.generate(WATER_SYSTEM_PROMPT, prompt, fallback_type="water_planning"),
+                timeout=8.0,
+            )
             rec = gemma.parse_json(response)
         except asyncio.TimeoutError:
             rec = {
@@ -215,7 +218,12 @@ async def detect_leakage(image_b64: str) -> dict:
         "overflow, or broken pipeline. Respond in JSON: "
         '{ "is_leakage", "confidence", "type", "reasoning" }.'
     )
-    response = await gemma.generate(system, "Analyze this image for water leakage.", image_b64=image_b64)
+    response = await gemma.generate(
+        system,
+        "Analyze this image for water leakage.",
+        image_b64=image_b64,
+        fallback_type="water_leakage",
+    )
     return gemma.parse_json(response)
 
 

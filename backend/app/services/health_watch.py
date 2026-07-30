@@ -414,6 +414,16 @@ def _is_prompt_echo(text: str) -> bool:
     return any(sig in head for sig in _PROMPT_ECHO_SIGNATURES)
 
 
+_OFFLINE_FALLBACK_MARKERS = (
+    "DystopiaCITY offline mode",
+    "DystopiaCITY is operating in offline mode",
+)
+
+
+def _is_offline_fallback(text: str) -> bool:
+    return any(marker in text for marker in _OFFLINE_FALLBACK_MARKERS)
+
+
 def _clean_prose_response(raw: str, fallback: str) -> str:
     """
     Strip Gemma responses that are prompt echoes rather than prose answers.
@@ -426,6 +436,12 @@ def _clean_prose_response(raw: str, fallback: str) -> str:
     if not raw or not raw.strip():
         return fallback
     cleaned = raw.strip()
+    if _is_offline_fallback(cleaned):
+        print(
+            "[health-watch] WARNING: Gemma returned offline fallback string. "
+            "Using ward-specific fallback."
+        )
+        return fallback
     if _is_prompt_echo(cleaned):
         # Log it so it's visible in the server console
         print(

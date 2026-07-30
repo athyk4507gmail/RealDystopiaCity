@@ -40,7 +40,7 @@ async def predict_surges(db: Session) -> list[dict]:
     events = db.query(TrafficEvent).all()
     event_list = [_event_to_dict(e) for e in events]
     prompt = f"Signals: {event_list}"
-    response = await gemma.generate(TRAFFIC_MOOD_PROMPT, prompt)
+    response = await gemma.generate(TRAFFIC_MOOD_PROMPT, prompt, fallback_type="traffic_mood")
     result = gemma.parse_json(response)
     predictions = result.get("predictions", [])
 
