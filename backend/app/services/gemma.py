@@ -412,7 +412,6 @@ class GemmaService:
                 ),
                 "resilience_index": 62,
             })
-<<<<<<< HEAD
         if "complaint triage" in system_prompt.lower():
             return json.dumps({
                 "severity": "medium",
