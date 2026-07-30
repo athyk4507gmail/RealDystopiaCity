@@ -21,8 +21,10 @@ logger = logging.getLogger("dystopiacity.water")
 LEGACY_PLACEHOLDER_MARKER = "standard allocation"
 
 
-WATER_SCHEDULE_REASONING_PROMPT = """You rewrite water supply scheduling facts into one clear sentence for citizens.
-Only restate the facts given below in clear language. Do not add numbers, causes, or claims that are not present in the input.
+WATER_SCHEDULE_REASONING_PROMPT = """You rewrite water supply scheduling facts into one clear, concise sentence for citizens.
+Explain the scheduling decision ONLY using the provided real data fields (e.g., days since last supply, fairness score, active complaints).
+CRITICAL: Do NOT invent or hallucinate reasons like "citywide budget exhausted", "priority wards", "maintenance", or "pipeline issues".
+If supply_today is false, explain honestly that the ward is on a scheduled rotation and it is not yet their turn based on the fairness score and target gap days.
 Return JSON: { "reasoning": string }"""
 
 WATER_TRIAGE_RAG_PROMPT = """You are a BWSSB water utility triage assistant.
@@ -193,9 +195,8 @@ def _fallback_schedule_reasoning(
             f"{int(ward.houses):,} households, {open_issues} active complaint(s){forced_note}."
         )
     return (
-        f"Ward {ward.name} not scheduled today — citywide supply budget exhausted "
-        f"after higher-priority wards ({days_since} days since last supply, "
-        f"fairness score {fairness_score:.1f})."
+        f"Ward {ward.name} not scheduled today — waiting for next scheduled rotation "
+        f"({days_since} days since last supply, fairness score {fairness_score:.1f})."
     )
 
 
@@ -219,8 +220,6 @@ async def _phrase_schedule_reasoning(
         "active_complaints": open_issues,
         "open_leakage_reports": ward.leakage_reports,
     }
-    if not supply_today:
-        facts["reason_not_scheduled"] = "citywide supply budget exhausted after higher-priority wards"
 
     prompt = f"Facts to restate in one sentence:\n{facts}"
     logger.info("Gemma schedule reasoning call starting for ward=%s", ward.name)

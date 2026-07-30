@@ -5,14 +5,11 @@ import { usePathname } from "next/navigation";
 import {
   HeartPulse,
   Droplets,
-  Bus,
   AlertTriangle,
   CloudRain,
   TrafficCone,
   Activity,
   Zap,
-  MessageSquare,
-  IndianRupee,
   Radio,
   Crosshair,
   Skull,
@@ -23,8 +20,6 @@ import clsx from "clsx";
 const modules = [
   { href: "/agent", label: "Civic Agent", icon: Bot, color: "text-accent" },
   { href: "/water", label: "Water Distribution", icon: Droplets, color: "text-cyan-400" },
-  { href: "/complaints", label: "Complaints", icon: MessageSquare, color: "text-rose-400" },
-  { href: "/trust-score", label: "Trust Score", icon: Bus, color: "text-blue-400" },
   { href: "/risk-zones", label: "Risk Zones", icon: AlertTriangle, color: "text-orange-400" },
   { href: "/traffic-mood", label: "Traffic Mood", icon: CloudRain, color: "text-purple-400" },
   { href: "/traffic", label: "Traffic Management", icon: TrafficCone, color: "text-yellow-400" },
@@ -32,7 +27,6 @@ const modules = [
   { href: "/junction-x", label: "Junction X", icon: Crosshair, color: "text-amber-400" },
   { href: "/dystopia", label: "Dystopia", icon: Skull, color: "text-rose-400" },
   { href: "/metabolism", label: "City Metabolism", icon: Activity, color: "text-emerald-400" },
-  { href: "/budget-watch", label: "Budget Watch", icon: IndianRupee, color: "text-green-400" },
   { href: "/health-watch", label: "Health Watch", icon: HeartPulse, color: "text-rose-400" },
 ];
 

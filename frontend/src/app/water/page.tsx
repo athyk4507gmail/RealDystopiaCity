@@ -524,6 +524,7 @@ export default function WaterPage() {
                 </p>
               </div>
 
+              {/* 
               <div className="rounded-xl border border-border p-4">
                 <label className="flex items-center gap-2 px-4 py-3 rounded-lg border border-dashed border-border cursor-pointer hover:border-accent/50">
                   <Upload className="w-4 h-4 text-accent" />
@@ -536,6 +537,7 @@ export default function WaterPage() {
                   </div>
                 )}
               </div>
+              */}
             </div>
 
             <div className="rounded-xl border border-border p-4">
