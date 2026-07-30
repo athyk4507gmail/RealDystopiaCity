@@ -1,0 +1,14 @@
+﻿Ward 12 (Marathahalli):
+  source_type = live
+  temp_c      = 27.72
+  humidity    = 67%
+  anomaly_c   = -0.3  (28deg norm)
+  path_hit    = LIVE integrations call
+
+Ward 19 (Bellandur):
+  source_type = live
+  temp_c      = 27.55
+  humidity    = 71%
+  anomaly_c   = -0.4  (28deg norm)
+  path_hit    = LIVE integrations call
+

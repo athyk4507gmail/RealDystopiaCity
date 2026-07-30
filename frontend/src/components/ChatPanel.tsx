@@ -16,7 +16,7 @@ export default function ChatPanel({ module }: { module: string }) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Hi! I'm CityPulse AI. Ask me anything about the current module data.",
+      content: "Hi! I'm DystopiaCITY. Ask me anything about the current module data.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -52,7 +52,7 @@ export default function ChatPanel({ module }: { module: string }) {
         )}
       >
         <MessageCircle className="w-5 h-5" />
-        Ask CityPulse AI
+        Ask DystopiaCITY
       </button>
 
       {open && (

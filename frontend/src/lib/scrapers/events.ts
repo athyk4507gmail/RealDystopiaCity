@@ -93,7 +93,7 @@ export async function fetchEvents(limit = 8): Promise<CityEvent[]> {
       try {
         const res = await fetch(feedUrl, {
           signal: AbortSignal.timeout(12_000),
-          headers: { "User-Agent": "CityPulseAI/1.0" },
+          headers: { "User-Agent": "DystopiaCITY/1.0" },
           next: { revalidate: 600 },
         });
         if (!res.ok) continue;

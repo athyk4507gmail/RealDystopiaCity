@@ -24,7 +24,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CityPulse AI — Sustainable City Intelligence",
+  title: "DystopiaCITY — Sustainable City Intelligence",
   description: "Unified AI platform for water distribution, traffic management, and city metabolism",
 };
 

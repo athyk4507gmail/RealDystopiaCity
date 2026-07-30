@@ -20,19 +20,48 @@ def get_db():
         db.close()
 
 
-def migrate_schema() -> None:
+def _add_columns(table: str, column_defs: dict[str, str]) -> list[str]:
     inspector = inspect(engine)
-    if "water_schedules" not in inspector.get_table_names():
-        return
+    if table not in inspector.get_table_names():
+        return []
+    existing = {col["name"] for col in inspector.get_columns(table)}
+    return [
+        f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"
+        for name, ddl in column_defs.items()
+        if name not in existing
+    ]
 
-    columns = {col["name"] for col in inspector.get_columns("water_schedules")}
-    alterations = []
-    if "supply_start_time" not in columns:
-        alterations.append("ALTER TABLE water_schedules ADD COLUMN supply_start_time VARCHAR(5) DEFAULT '06:00'")
-    if "supply_end_time" not in columns:
-        alterations.append("ALTER TABLE water_schedules ADD COLUMN supply_end_time VARCHAR(5) DEFAULT '09:00'")
-    if "sub_localities" not in columns:
-        alterations.append("ALTER TABLE water_schedules ADD COLUMN sub_localities JSON")
+
+def migrate_schema() -> None:
+    alterations: list[str] = []
+
+    alterations.extend(
+        _add_columns(
+            "water_schedules",
+            {
+                "supply_start_time": "VARCHAR(5) DEFAULT '06:00'",
+                "supply_end_time": "VARCHAR(5) DEFAULT '09:00'",
+                "sub_localities": "JSON",
+                "fairness_score": "FLOAT",
+                "days_since_supply": "INTEGER",
+                "forced_supply": "BOOLEAN DEFAULT 0",
+                "overridden": "BOOLEAN DEFAULT 0",
+                "override_reason": "TEXT",
+            },
+        )
+    )
+
+    alterations.extend(
+        _add_columns(
+            "water_complaints",
+            {
+                "resolved_at": "DATETIME",
+                "resolution_comment": "TEXT",
+                "assigned_team": "VARCHAR(100)",
+                "is_synthetic_seed": "BOOLEAN DEFAULT 0",
+            },
+        )
+    )
 
     if not alterations:
         return

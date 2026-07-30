@@ -5,7 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   LineChart, Line, CartesianGrid,
 } from "recharts";
-import { RefreshCw, Upload, ChevronDown, ChevronRight, Droplets, Thermometer, ArrowUp, ArrowDown } from "lucide-react";
+import { RefreshCw, Upload, ChevronDown, ChevronRight, Droplets, Thermometer, ArrowUp, ArrowDown, Newspaper, Building2, ExternalLink, MessageSquare, Send } from "lucide-react";
 import { api, Ward, WaterSchedule, DemandPrediction } from "@/lib/api";
 import type { WaterLevelReading, WeatherReading } from "@/lib/scrapers/types";
 import { useLiveData } from "@/hooks/useLiveData";
@@ -13,6 +13,7 @@ import MapboxMap from "@/components/MapboxMap";
 import StatCard from "@/components/StatCard";
 import PriorityBadge from "@/components/PriorityBadge";
 import ReasoningBox from "@/components/ReasoningBox";
+import GemmaBanner from "@/components/water/GemmaBanner";
 import DataSourceBadge from "@/components/DataSourceBadge";
 import LiveSourceBanner from "@/components/LiveSourceBanner";
 import LoadingSkeleton, { StatCardSkeleton, MapSkeleton } from "@/components/LoadingSkeleton";
@@ -20,6 +21,42 @@ import DataError from "@/components/DataError";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { TiltCard } from "@/components/TiltCard";
 import { sanitizeComplaintDescription } from "@/lib/validation";
+
+function formatLitres(value: number | undefined): string {
+  if (value == null) return "—";
+  return Math.round(value).toLocaleString("en-IN");
+}
+
+const MAP_LEGEND = [
+  { color: "#ef4444", label: "Overdue — Priority" },
+  { color: "#eab308", label: "Scheduled" },
+  { color: "#22c55e", label: "Waiting" },
+  { color: "#6b7280", label: "No schedule data" },
+];
+
+function wardMapStyle(sched: WaterSchedule | undefined) {
+  if (!sched) return { fill: "#6b7280", line: "#9ca3af" };
+  if (sched.forced_supply) return { fill: "#ef4444", line: "#f87171" };
+  if (sched.supply_today) return { fill: "#eab308", line: "#facc15" };
+  return { fill: "#22c55e", line: "#4ade80" };
+}
+
+function wardPopupHtml(ward: Ward, sched: WaterSchedule | undefined) {
+  const status = !sched
+    ? "No data"
+    : sched.forced_supply && sched.supply_today
+    ? "Overdue — Priority"
+    : sched.supply_today
+    ? "Scheduled"
+    : "Waiting";
+  return `<div style="font-size:12px;line-height:1.5">
+    <strong>${ward.name}</strong><br/>
+    <b>Status:</b> ${status}<br/>
+    <b>Allocation:</b> ${sched?.supply_today ? `${formatLitres(sched.allocation_litres)} L` : "—"}<br/>
+    <b>Window:</b> ${sched?.supply_today ? `${sched.supply_start_time}–${sched.supply_end_time}` : "—"}<br/>
+    <span style="color:#94a3b8">${sched?.reasoning ?? "No reasoning available"}</span>
+  </div>`;
+}
 
 function WardScheduleCard({ schedule }: { schedule: WaterSchedule }) {
   const [open, setOpen] = useState(false);
@@ -41,7 +78,7 @@ function WardScheduleCard({ schedule }: { schedule: WaterSchedule }) {
         </div>
       )}
       <div className="text-xs text-slate-400">
-        {schedule.allocation_litres?.toLocaleString("en-IN")}L · {schedule.duration_hours}h
+        {formatLitres(schedule.allocation_litres)}L · {schedule.duration_hours}h
       </div>
       <ReasoningBox reasoning={schedule.reasoning} />
       <div className="border-t border-border pt-2">
@@ -60,7 +97,7 @@ function WardScheduleCard({ schedule }: { schedule: WaterSchedule }) {
                 <span>
                   #{loc.priority_rank} {loc.name}
                 </span>
-                <span className="text-slate-400">{loc.allocation_litres.toLocaleString("en-IN")} L</span>
+                <span className="text-slate-400">{formatLitres(loc.allocation_litres)} L</span>
               </div>
             ))}
           </div>
@@ -80,6 +117,11 @@ export default function WaterPage() {
   const [leakResult, setLeakResult] = useState<{ reasoning?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+
+  // Citizen Q&A state
+  const [qaQuestion, setQaQuestion] = useState("");
+  const [qaAnswer, setQaAnswer] = useState<string | null>(null);
+  const [qaLoading, setQaLoading] = useState(false);
 
   const {
     data: weather,
@@ -150,7 +192,6 @@ export default function WaterPage() {
       setLoading(false);
     }
   };
-
   const wardDemand = async (id: number) => {
     setSelectedWard(id);
     try {
@@ -175,6 +216,33 @@ export default function WaterPage() {
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Leak detection failed");
+    }
+  };
+
+  const handleAskQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!qaQuestion.trim()) return;
+    setQaLoading(true);
+    setQaAnswer(null);
+    const ward = wards.find((w) => w.id === selectedWard);
+    const wardSched = schedule.find((s) => s.ward_id === selectedWard);
+    try {
+      const result = await api.water.askQuestion({
+        question: qaQuestion.trim(),
+        ward_context: {
+          name: ward?.name ?? "your ward",
+          supply_today: wardSched?.supply_today ?? false,
+          supply_start_time: wardSched?.supply_start_time ?? "N/A",
+          supply_end_time: wardSched?.supply_end_time ?? "N/A",
+          days_since_supply: ward?.days_since_supply ?? 0,
+          open_issues: ward?.complaints ?? 0,
+        },
+      });
+      setQaAnswer(result.answer ?? "I couldn't find an answer. Please contact BWSSB at 1916.");
+    } catch {
+      setQaAnswer("Unable to reach AI assistant right now. Please try again or call BWSSB helpline: 1916.");
+    } finally {
+      setQaLoading(false);
     }
   };
 
@@ -236,6 +304,8 @@ export default function WaterPage() {
           aria-hidden="true"
         />
         {error && <DataError message={error} onRetry={load} />}
+
+        <GemmaBanner />
 
         <TiltCard className="relative z-10">
           <div className="flex items-center justify-between mb-6">
@@ -489,7 +559,7 @@ export default function WaterPage() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-400">Allocation</span>
-                      <span>{wardSchedule.allocation_litres?.toLocaleString("en-IN")} litres</span>
+                      <span>{formatLitres(wardSchedule.allocation_litres)} litres</span>
                     </div>
                     <ReasoningBox reasoning={wardSchedule.reasoning} />
                   </div>
@@ -504,7 +574,49 @@ export default function WaterPage() {
                   <p>• Use a bucket instead of a hose for washing vehicles</p>
                   <p>• Report leaks immediately via the form below</p>
                 </div>
-                <p className="text-xs text-accent mt-3">Ask CityPulse AI: &quot;How can I save water this summer?&quot;</p>
+              </div>
+
+              {/* Citizen Q&A — Gemma AI */}
+              <div className="glass-panel space-y-3">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-accent" />
+                  <h3 className="font-medium text-sm">Ask AI about your water supply</h3>
+                  <span className="text-xs bg-accent/10 text-accent border border-accent/20 px-1.5 py-0.5 rounded ml-auto">
+                    Gemma 4
+                  </span>
+                </div>
+
+                <form onSubmit={handleAskQuestion} className="flex gap-2">
+                  <input
+                    id="citizen-qa-input"
+                    type="text"
+                    value={qaQuestion}
+                    onChange={(e) => setQaQuestion(e.target.value)}
+                    placeholder='e.g. "When will water come today?" or "Why was supply delayed?"'
+                    className="flex-1 glass-input px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-accent/50"
+                  />
+
+                  <button
+                    id="citizen-qa-submit"
+                    type="submit"
+                    disabled={qaLoading || !qaQuestion.trim()}
+                    className="px-3 py-2 rounded-lg bg-accent text-black text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {qaLoading ? (
+                      <span className="inline-block w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                  </button>
+                </form>
+
+                {qaAnswer && (
+                  <ReasoningBox reasoning={qaAnswer} title="AI Answer — Gemma 4" />
+                )}
+
+                <p className="text-xs text-accent mt-3">
+                  Ask DystopiaCITY: &quot;How can I save water this summer?&quot;
+                </p>
               </div>
 
               <div className="glass-panel">

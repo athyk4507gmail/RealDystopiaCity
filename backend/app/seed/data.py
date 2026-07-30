@@ -3,6 +3,7 @@ import random
 
 from sqlalchemy.orm import Session
 
+from app.services.ward_baseline import get_ward_baseline, load_ward_seed_data
 from app.models import (
     BusRoute,
     RoadSegment,
@@ -10,12 +11,16 @@ from app.models import (
     TrafficSignal,
     Ward,
     WaterComplaint,
+    WaterSchedule,
 )
-from app.services.canonical_locations import get_canonical_roads, get_canonical_wards, get_household_size
+from app.seed.budget_data import seed_budget_data
+from app.services.canonical_locations import get_canonical_roads, get_canonical_wards
+from app.services.ward_baseline import get_ward_baseline
 
 
 WARD_NAMES = [ward["name"] for ward in get_canonical_wards()]
 ROAD_NAMES = [road["name"] for road in get_canonical_roads()]
+WARD_COORDS = {ward["name"]: (ward["lat"], ward["lng"]) for ward in get_canonical_wards()}
 
 BUS_ROUTES = [
     ("9", "Shivaji Nagar - Electronic City"), ("14", "Hebbal - Jayanagar"),
@@ -25,7 +30,27 @@ BUS_ROUTES = [
 ]
 
 
-def _ward_polygon(lat: float, lng: float, size: float = 0.008) -> list:
+def _staggered_days_since_supply(ward_index: int) -> int:
+    """Realistic rotation: ~1/4 supplied yesterday, 1/4 two days ago, etc."""
+    bucket = ward_index % 4
+    if bucket == 0:
+        return 1
+    if bucket == 1:
+        return 2
+    if bucket == 2:
+        return 3
+    return 4 + (ward_index % 3)  # 4, 5, or 6 — overdue bucket
+
+
+def _refresh_ward_supply_dates(db: Session) -> None:
+    """Re-stagger last_supply_date so fairness produces a realistic mix."""
+    today = date.today()
+    for i, ward in enumerate(db.query(Ward).order_by(Ward.id).all()):
+        ward.last_supply_date = today - timedelta(days=_staggered_days_since_supply(i))
+    db.commit()
+
+
+def _ward_polygon(lat: float, lng: float, size: float = 0.012) -> list:
     return [
         [lng - size, lat - size], [lng + size, lat - size],
         [lng + size, lat + size], [lng - size, lat + size],
@@ -33,55 +58,142 @@ def _ward_polygon(lat: float, lng: float, size: float = 0.008) -> list:
     ]
 
 
-def _seed_complaints(db: Session) -> None:
+def _apply_ward_baseline(ward: Ward) -> None:
+    baseline = get_ward_baseline(ward.name)
+    if not baseline:
+        return
+    ward.population = baseline["population_estimate_2026"]
+    ward.houses = baseline["houses"]
+    if baseline.get("lat") is not None:
+        ward.lat = baseline["lat"]
+    if baseline.get("lng") is not None:
+        ward.lng = baseline["lng"]
+    if baseline.get("polygon"):
+        ward.polygon = baseline["polygon"]
+
+
+def _update_existing_ward_baselines(db: Session) -> None:
+    for ward in db.query(Ward).all():
+        _apply_ward_baseline(ward)
+    db.commit()
+
+
+def _sync_wards_from_seed(db: Session) -> None:
+    """Add any wards from ward_seed_data.json that are not yet in the DB."""
+    existing = {w.name.lower() for w in db.query(Ward).all()}
+    today = date.today()
+    seed_wards = load_ward_seed_data().get("wards", [])
+    added = 0
+    for i, entry in enumerate(seed_wards):
+        name = entry["name"]
+        if name.lower() in existing:
+            continue
+        lat = entry.get("lat", 12.97 + 0.01 * i)
+        lng = entry.get("lng", 77.59 + 0.01 * i)
+        polygon = entry.get("polygon") or _ward_polygon(lat, lng)
+        baseline = get_ward_baseline(name)
+        population = baseline["population_estimate_2026"] if baseline else random.randint(15000, 85000)
+        houses = baseline["houses"] if baseline else random.randint(3000, 18000)
+        days_ago = _staggered_days_since_supply(len(existing) + added)
+        db.add(Ward(
+            name=name,
+            population=population,
+            houses=houses,
+            tank_capacity_litres=round(random.uniform(80000, 250000)),
+            available_water_litres=round(random.uniform(20000, 180000)),
+            last_supply_date=today - timedelta(days=days_ago),
+            avg_daily_consumption=round(random.uniform(12000, 45000)),
+            complaints=random.randint(0, 8),
+            leakage_reports=random.randint(0, 5),
+            temperature_c=round(random.uniform(28, 38), 1),
+            growth_rate_pct=2.1,
+            lat=lat,
+            lng=lng,
+            polygon=polygon,
+        ))
+        added += 1
+    if added:
+        db.commit()
+
+
+def sync_ward_seed_data(db: Session) -> int:
+    """Public entry: add missing wards from ward_seed_data.json. Returns count added."""
+    before = db.query(Ward).count()
+    _sync_wards_from_seed(db)
+    _update_existing_ward_baselines(db)
+    return db.query(Ward).count() - before
+
+
+def _seed_open_complaints(db: Session) -> None:
+    """A small set of live-style open complaints for the active dashboard."""
+    if db.query(WaterComplaint).filter(WaterComplaint.status == "open").count() >= 8:
+        return
     complaint_types = ["no-supply", "low-pressure", "leakage", "contamination"]
     ward_ids = [w.id for w in db.query(Ward).limit(12).all()]
     if not ward_ids:
         return
 
-    for i in range(24):
+    for i in range(12):
         ward_id = ward_ids[i % len(ward_ids)]
         ctype = complaint_types[i % len(complaint_types)]
-        days_ago = random.randint(0, 14)
+        days_ago = random.randint(0, 5)
         db.add(WaterComplaint(
             ward_id=ward_id,
             type=ctype,
-            description=f"Reported {ctype.replace('-', ' ')} issue in ward area",
-            status="open" if i % 3 else "resolved",
+            description=f"Active {ctype.replace('-', ' ')} report awaiting field response",
+            status="open",
             created_at=datetime.now() - timedelta(days=days_ago, hours=random.randint(0, 12)),
         ))
 
 
 def seed_database(db: Session) -> None:
+    seed_budget_data(db)
+
     if db.query(Ward).count() > 0:
-        if db.query(WaterComplaint).count() < 10:
-            _seed_complaints(db)
-            db.commit()
+        # Population baseline: 2011 census figures, projected forward at ~2.1%/yr
+        # Bengaluru growth rate. Not live official data — clearly documented estimate.
+        _sync_wards_from_seed(db)
+        _update_existing_ward_baselines(db)
+        _refresh_ward_supply_dates(db)
+        # Historical complaints/schedules: one-time via python -m app.data.generate_historical_complaints
+        _seed_open_complaints(db)
+        db.commit()
         return
 
-    base_lat, base_lng = 12.9716, 77.5946
     today = date.today()
 
-    for i, name in enumerate(WARD_NAMES):
-        angle = (i / len(WARD_NAMES)) * 6.283
-        lat = base_lat + 0.05 * (i % 5 - 2) + 0.01 * random.random()
-        lng = base_lng + 0.05 * (i // 5 - 2) + 0.01 * random.random()
-        days_ago = random.randint(2, 8)
+    seed_wards = load_ward_seed_data().get("wards", [])
+    ward_source = seed_wards if seed_wards else [{"name": n, **({"lat": WARD_COORDS[n][0], "lng": WARD_COORDS[n][1]} if n in WARD_COORDS else {})} for n in WARD_NAMES]
+
+    for i, entry in enumerate(ward_source):
+        name = entry["name"]
+        lat = entry.get("lat") or WARD_COORDS.get(name, (12.9716 + 0.01 * i, 77.5946 + 0.01 * i))[0]
+        lng = entry.get("lng") or WARD_COORDS.get(name, (12.9716 + 0.01 * i, 77.5946 + 0.01 * i))[1]
+        polygon = entry.get("polygon") or _ward_polygon(lat, lng)
+        days_ago = _staggered_days_since_supply(i)
+        baseline = get_ward_baseline(name)
+        if baseline:
+            population = baseline["population_estimate_2026"]
+            houses = baseline["houses"]
+        else:
+            population = random.randint(15000, 85000)
+            houses = random.randint(3000, 18000)
+
         ward = Ward(
             name=name,
-            population=random.randint(15000, 85000),
-            houses=random.randint(3000, 18000),
-            tank_capacity_litres=random.uniform(80000, 250000),
-            available_water_litres=random.uniform(20000, 180000),
+            population=population,
+            houses=houses,
+            tank_capacity_litres=round(random.uniform(80000, 250000)),
+            available_water_litres=round(random.uniform(20000, 180000)),
             last_supply_date=today - timedelta(days=days_ago),
-            avg_daily_consumption=random.uniform(12000, 45000),
-            complaints=random.randint(0, 15),
-            leakage_reports=random.randint(0, 8),
-            temperature_c=random.uniform(28, 38),
-            growth_rate_pct=random.uniform(1.2, 4.5),
+            avg_daily_consumption=round(random.uniform(12000, 45000)),
+            complaints=random.randint(0, 8),
+            leakage_reports=random.randint(0, 5),
+            temperature_c=round(random.uniform(28, 38), 1),
+            growth_rate_pct=2.1,
             lat=lat,
             lng=lng,
-            polygon=_ward_polygon(lat, lng),
+            polygon=polygon,
         )
         db.add(ward)
 
@@ -169,10 +281,10 @@ def seed_database(db: Session) -> None:
             hours_before_surge=round(random.uniform(1, 4), 1),
         ))
 
-    db.add(WaterComplaint(
-        ward_id=1, type="low_pressure", description="No water for 3 days",
-        status="open",
-    ))
-
-    _seed_complaints(db)
     db.commit()
+
+    # Historical complaints: one-time via python -m app.data.generate_historical_complaints
+    _seed_open_complaints(db)
+    db.commit()
+
+    seed_budget_data(db)

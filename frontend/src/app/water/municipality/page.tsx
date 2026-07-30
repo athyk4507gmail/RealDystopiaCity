@@ -18,9 +18,17 @@ import {
   Megaphone,
   Send,
   XCircle,
+  Sparkles,
+  Brain,
 } from "lucide-react";
+import { api } from "@/lib/api";
+import type { TriageResult, WaterSchedule } from "@/lib/api";
 import type { WaterAnnouncement } from "@/lib/water/announcementsStore";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import ReasoningBox from "@/components/ReasoningBox";
+import GemmaBanner from "@/components/water/GemmaBanner";
+import GemmaAttribution from "@/components/water/GemmaAttribution";
+import SupplyStatusBadge from "@/components/water/SupplyStatusBadge";
 import DataError from "@/components/DataError";
 import LoadingSkeleton from "@/components/LoadingSkeleton";
 import StatCard from "@/components/StatCard";
@@ -70,6 +78,28 @@ export default function MunicipalityDashboardPage() {
   const [announceLoading, setAnnounceLoading] = useState(false);
   const [announceSuccess, setAnnounceSuccess] = useState<string | null>(null);
   const [announceError, setAnnounceError] = useState<string | null>(null);
+
+  // AI — Announcement Draft state
+  const [announceHint, setAnnounceHint] = useState("");
+  const [draftLoading, setDraftLoading] = useState(false);
+
+  // AI — Issue Insights state
+  const [insightsSummary, setInsightsSummary] = useState<string | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+
+  // AI — Triage state
+  const [triageResults, setTriageResults] = useState<
+    Record<string, (TriageResult & { loading?: boolean; showCases?: boolean }) | null>
+  >({});
+
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleMessage, setScheduleMessage] = useState<string | null>(null);
+  const [todaySchedule, setTodaySchedule] = useState<WaterSchedule[]>([]);
+  const [fairnessWarnings, setFairnessWarnings] = useState<
+    { ward_name: string; days_since_supply: number; limit_days: number }[]
+  >([]);
+  const [showPlannedMaintenance, setShowPlannedMaintenance] = useState(false);
+  const [overrideLoadingId, setOverrideLoadingId] = useState<number | null>(null);
 
   // -------------------------------------------------------------------------
   // Auth Check (Route Guard)
@@ -133,12 +163,43 @@ export default function MunicipalityDashboardPage() {
     }
   }, []);
 
+  const sortSchedule = (rows: WaterSchedule[]) =>
+    [...rows].sort((a, b) => {
+      if (Boolean(a.forced_supply) !== Boolean(b.forced_supply)) {
+        return a.forced_supply ? -1 : 1;
+      }
+      return (b.fairness_score ?? 0) - (a.fairness_score ?? 0);
+    });
+
+  const formatLitres = (value: number | undefined) =>
+    value == null || value <= 0 ? "—" : `${Math.round(value).toLocaleString("en-IN")} L`;
+
+  const fetchTodaySchedule = useCallback(async () => {
+    try {
+      const data = await api.water.schedule();
+      setTodaySchedule(sortSchedule(data));
+    } catch {
+      setTodaySchedule([]);
+    }
+  }, []);
+
+  const fetchFairnessWarnings = useCallback(async () => {
+    try {
+      const data = await api.water.fairnessWarnings();
+      setFairnessWarnings(data);
+    } catch {
+      setFairnessWarnings([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (!authLoading) {
       fetchIssues();
       fetchAnnouncements();
+      fetchTodaySchedule();
+      fetchFairnessWarnings();
     }
-  }, [authLoading, fetchIssues, fetchAnnouncements]);
+  }, [authLoading, fetchIssues, fetchAnnouncements, fetchTodaySchedule, fetchFairnessWarnings]);
 
   // -------------------------------------------------------------------------
   // Send Announcement Handler
@@ -188,6 +249,129 @@ export default function MunicipalityDashboardPage() {
   const handleLogout = async () => {
     await fetch("/api/water/auth", { method: "DELETE" });
     router.push("/water/login?role=municipality");
+  };
+
+  // -------------------------------------------------------------------------
+  // AI — Draft Announcement
+  // -------------------------------------------------------------------------
+  const handleDraftAnnouncement = async () => {
+    if (!announceHint.trim()) return;
+    setDraftLoading(true);
+    try {
+      const result = await api.water.draftAnnouncement({
+        area: announceArea,
+        hint: announceHint.trim(),
+      });
+      if (result.draft) setAnnounceMessage(result.draft);
+    } catch {
+      // Fallback: leave the textarea empty so staff can type manually
+    } finally {
+      setDraftLoading(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // AI — Issue Insights
+  // -------------------------------------------------------------------------
+  const handleLoadInsights = async () => {
+    if (issues.length === 0) return;
+    setInsightsLoading(true);
+    setInsightsSummary(null);
+    // Summarise issue counts by type — scoped, not full descriptions
+    const countMap: Record<string, number> = {};
+    issues.forEach((i) => { countMap[i.type] = (countMap[i.type] ?? 0) + 1; });
+    const issueSummary = Object.entries(countMap).map(([type, count]) => ({ type, count }));
+    try {
+      const result = await api.water.issueInsights({ issue_summary: issueSummary });
+      setInsightsSummary(result.summary ?? "No insight generated.");
+    } catch {
+      setInsightsSummary("Unable to load insights right now. Please refresh and try again.");
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // AI — Complaint Triage
+  // -------------------------------------------------------------------------
+  const ISSUE_TYPE_MAP: Record<string, string> = {
+    supply_disruption: "no-supply",
+    maintenance: "low-pressure",
+    leakage: "leakage",
+    contamination: "contamination",
+    other: "no-supply",
+  };
+
+  const normalizeWardName = (name: string) =>
+    name.replace(/shivajinagar/i, "Shivaji Nagar").replace(/malleswaram/i, "Malleshwaram");
+
+  const handleRegenerateSchedule = async () => {
+    setScheduleLoading(true);
+    setScheduleMessage(null);
+    try {
+      const result = await api.water.generateSchedule();
+      setTodaySchedule(sortSchedule(result));
+      await fetchFairnessWarnings();
+      setScheduleMessage(`Today's supply priority list regenerated for ${result.length} wards.`);
+    } catch {
+      setScheduleMessage("Failed to regenerate schedule.");
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
+  const handleOverride = async (row: WaterSchedule) => {
+    const nextSupply = !row.supply_today;
+    const reason = window.prompt(
+      nextSupply
+        ? `Why should ${row.ward_name} receive supply today? (required)`
+        : `Why should ${row.ward_name} NOT receive supply today? (e.g. pipe under repair)`,
+    );
+    if (!reason?.trim()) return;
+
+    setOverrideLoadingId(row.ward_id);
+    try {
+      const updated = await api.water.overrideSchedule(row.ward_id, {
+        supply_today: nextSupply,
+        override_reason: reason.trim(),
+      });
+      setTodaySchedule((prev) =>
+        sortSchedule(prev.map((s) => (s.ward_id === updated.ward_id ? updated : s))),
+      );
+      setScheduleMessage(`Manual override saved for ${row.ward_name}.`);
+    } catch {
+      setScheduleMessage(`Could not save override for ${row.ward_name}.`);
+    } finally {
+      setOverrideLoadingId(null);
+    }
+  };
+
+  const handleTriage = async (issueId: string, description: string, type: string, wardName: string) => {
+    setTriageResults((prev) => ({ ...prev, [issueId]: { loading: true } as TriageResult & { loading?: boolean } }));
+    try {
+      const result = await api.water.triageComplaint({
+        description,
+        type: ISSUE_TYPE_MAP[type] ?? type,
+        ward_name: normalizeWardName(wardName),
+      });
+      setTriageResults((prev) => ({ ...prev, [issueId]: { ...result, loading: false, showCases: false } }));
+    } catch {
+      setTriageResults((prev) => ({
+        ...prev,
+        [issueId]: {
+          severity: "medium",
+          recommended_team: "Pipeline Team A",
+          eta_hours_low: 6,
+          eta_hours_high: 12,
+          reasoning: "Unable to reach AI triage — generic staff estimate applied.",
+          based_on_cases: 0,
+          retrieved_cases: [],
+          fallback: true,
+          loading: false,
+          showCases: false,
+        },
+      }));
+    }
   };
 
   // -------------------------------------------------------------------------
@@ -327,6 +511,21 @@ export default function MunicipalityDashboardPage() {
           </div>
         </div>
 
+        {scheduleMessage && (
+          <p className="text-sm text-cyan-400">{scheduleMessage}</p>
+        )}
+
+        {fairnessWarnings.length > 0 && (
+          <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-200">
+            ⚠️ {fairnessWarnings.length} ward{fairnessWarnings.length === 1 ? "" : "s"} approaching fairness limit:{" "}
+            {fairnessWarnings
+              .map((w) => `${w.ward_name}: ${w.days_since_supply}/${w.limit_days} days`)
+              .join(", ")}
+          </div>
+        )}
+
+        <GemmaBanner />
+
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
@@ -357,63 +556,124 @@ export default function MunicipalityDashboardPage() {
         </div>
 
         {/* ============================================================
-            SECTION 1: Supply Schedule Overview
+            SECTION 1: Today's Supply Priority List (live fairness engine)
         ============================================================ */}
         <div className="rounded-xl border border-border bg-card p-5 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-semibold text-lg flex items-center gap-2">
               <Calendar className="w-5 h-5 text-accent" />
-              Ward Supply Schedule Overview
+              Today&apos;s Supply Priority List
             </h2>
-            <span className="text-xs text-slate-400">7 Days Outlook</span>
+            <button
+              type="button"
+              onClick={handleRegenerateSchedule}
+              disabled={scheduleLoading}
+              className="px-5 py-2.5 rounded-lg bg-accent text-black font-semibold text-sm hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${scheduleLoading ? "animate-spin" : ""}`} />
+              Regenerate Today&apos;s Schedule
+            </button>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead>
                 <tr className="text-xs text-slate-500 uppercase tracking-wide border-b border-border">
-                  <th className="pb-3 font-medium">Zone / Ward</th>
-                  <th className="pb-3 font-medium">Date &amp; Window</th>
-                  <th className="pb-3 font-medium">Event Type</th>
-                  <th className="pb-3 font-medium">Severity</th>
-                  <th className="pb-3 font-medium">Operational Reason</th>
+                  <th className="pb-3 font-medium">Ward</th>
+                  <th className="pb-3 font-medium">Supply Today?</th>
+                  <th className="pb-3 font-medium">Reason</th>
+                  <th className="pb-3 font-medium">Allocation</th>
+                  <th className="pb-3 font-medium">Time Window</th>
+                  <th className="pb-3 font-medium">Staff Override</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
-                {weekEvents.slice(0, 8).map((e) => (
-                  <tr key={e.id} className="hover:bg-white/[0.02]">
-                    <td className="py-3 font-medium text-slate-200">{e.zone}</td>
-                    <td className="py-3 text-slate-400">
-                      {new Date(e.date).toLocaleDateString("en-IN", {
-                        weekday: "short",
-                        day: "numeric",
-                        month: "short",
-                      })}{" "}
-                      · <span className="text-slate-300 font-mono text-xs">{e.time}{e.endTime ? `-${e.endTime}` : ""}</span>
+                {todaySchedule.map((row) => (
+                  <tr key={row.ward_id} className="hover:bg-white/[0.02] align-top">
+                    <td className="py-3 font-medium text-slate-200">{row.ward_name}</td>
+                    <td className="py-3 text-slate-300">
+                      <SupplyStatusBadge row={row} />
+                    </td>
+                    <td className="py-3 text-xs text-slate-400 max-w-md leading-relaxed">
+                      <div className="flex items-start gap-2">
+                        <GemmaAttribution className="mt-0.5 shrink-0" />
+                        <span>{row.reasoning}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 text-slate-300 font-mono text-xs">
+                      {formatLitres(row.allocation_litres)}
+                    </td>
+                    <td className="py-3 text-slate-300 font-mono text-xs">
+                      {row.supply_today
+                        ? `${row.supply_start_time}–${row.supply_end_time}`
+                        : "—"}
                     </td>
                     <td className="py-3">
-                      <span className="text-xs bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded">
-                        {notificationTypeLabel(e.type)}
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded font-medium ${
-                          e.severity === "critical"
-                            ? "bg-red-500/20 text-red-400"
-                            : e.severity === "warning"
-                            ? "bg-yellow-500/20 text-yellow-400"
-                            : "bg-emerald-500/20 text-emerald-400"
-                        }`}
+                      <button
+                        type="button"
+                        onClick={() => handleOverride(row)}
+                        disabled={overrideLoadingId === row.ward_id}
+                        className="text-xs px-2.5 py-1 rounded border border-border hover:border-accent/40 text-slate-300 disabled:opacity-50"
                       >
-                        {e.severity.toUpperCase()}
-                      </span>
+                        {overrideLoadingId === row.ward_id
+                          ? "Saving..."
+                          : row.supply_today
+                          ? "Mark No Supply"
+                          : "Mark Supply"}
+                      </button>
                     </td>
-                    <td className="py-3 text-xs text-slate-400 max-w-xs">{e.reason}</td>
                   </tr>
                 ))}
+                {todaySchedule.length === 0 && !scheduleLoading && (
+                  <tr>
+                    <td colSpan={6} className="py-6 text-center text-slate-500 text-sm">
+                      No schedule loaded. Click &quot;Regenerate Today&apos;s Schedule&quot; above.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
+          </div>
+
+          <div className="border-t border-border/50 pt-3">
+            <button
+              type="button"
+              onClick={() => setShowPlannedMaintenance((v) => !v)}
+              className="text-xs text-slate-400 hover:text-accent"
+            >
+              {showPlannedMaintenance ? "Hide" : "Show"} Planned Maintenance calendar (staff-entered outlook)
+            </button>
+            {showPlannedMaintenance && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead>
+                    <tr className="text-xs text-slate-500 uppercase tracking-wide border-b border-border">
+                      <th className="pb-2 font-medium">Zone / Ward</th>
+                      <th className="pb-2 font-medium">Date &amp; Window</th>
+                      <th className="pb-2 font-medium">Event Type</th>
+                      <th className="pb-2 font-medium">Note</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {weekEvents.slice(0, 8).map((e) => (
+                      <tr key={e.id}>
+                        <td className="py-2 text-slate-300">{e.zone}</td>
+                        <td className="py-2 text-slate-400 text-xs">
+                          {new Date(e.date).toLocaleDateString("en-IN", {
+                            weekday: "short",
+                            day: "numeric",
+                            month: "short",
+                          })}{" "}
+                          · {e.time}{e.endTime ? `-${e.endTime}` : ""}
+                        </td>
+                        <td className="py-2 text-xs text-cyan-400">{notificationTypeLabel(e.type)}</td>
+                        <td className="py-2 text-xs text-slate-500">{e.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
 
@@ -436,6 +696,36 @@ export default function MunicipalityDashboardPage() {
                 >
                   <RefreshCw className="w-3.5 h-3.5" /> Refresh List
                 </button>
+              </div>
+
+              {/* AI Issue Insights Panel */}
+              <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-accent flex items-center gap-1.5">
+                    <Brain className="w-3.5 h-3.5" />
+                    AI Issue Insights — Gemma 4
+                  </p>
+                  <button
+                    id="insights-refresh-btn"
+                    type="button"
+                    onClick={handleLoadInsights}
+                    disabled={insightsLoading || issues.length === 0}
+                    className="text-xs text-accent hover:text-white bg-accent/10 px-2.5 py-1 rounded border border-accent/20 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {insightsLoading ? (
+                      <span className="inline-block w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3 h-3" />
+                    )}
+                    {insightsSummary ? "Refresh" : "Get Insights"}
+                  </button>
+                </div>
+                {insightsSummary && (
+                  <p className="text-sm text-slate-300 leading-relaxed">{insightsSummary}</p>
+                )}
+                {!insightsSummary && !insightsLoading && (
+                  <p className="text-xs text-slate-500 italic">Click "Get Insights" to generate an AI pattern summary of current issues.</p>
+                )}
               </div>
 
               {issuesLoading && <LoadingSkeleton rows={4} />}
@@ -493,6 +783,78 @@ export default function MunicipalityDashboardPage() {
                         <Clock className="w-3 h-3" />
                         Reported at: {new Date(issue.reported_at).toLocaleString("en-IN")}
                       </p>
+
+                      {/* AI Triage Button + Result */}
+                      {(() => {
+                        const triage = triageResults[issue.id];
+                        return (
+                          <div className="space-y-2">
+                            <button
+                              type="button"
+                              onClick={() => handleTriage(issue.id, issue.description, issue.type, issue.ward_name)}
+                              disabled={triage?.loading}
+                              className="flex items-center gap-1.5 text-xs text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-lg hover:bg-accent/20 disabled:opacity-50"
+                            >
+                              {triage?.loading ? (
+                                <span className="inline-block w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+                              ) : (
+                                <Sparkles className="w-3 h-3" />
+                              )}
+                              AI Triage
+                            </button>
+                            {triage && !triage.loading && triage.severity && (
+                              <div className="rounded-lg border border-accent/20 bg-accent/5 p-2.5 space-y-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                                    triage.severity === "critical" ? "bg-red-500/20 text-red-400" :
+                                    triage.severity === "high" ? "bg-orange-500/20 text-orange-400" :
+                                    triage.severity === "medium" ? "bg-yellow-500/20 text-yellow-400" :
+                                    "bg-emerald-500/20 text-emerald-400"
+                                  }`}>{triage.severity.toUpperCase()}</span>
+                                  <span className="text-xs text-slate-400">{triage.recommended_team}</span>
+                                  <span className="text-xs text-slate-500">
+                                    ETA {triage.eta_hours_low}–{triage.eta_hours_high}h
+                                  </span>
+                                  {triage.fallback && (
+                                    <span className="text-xs text-yellow-400">(generic estimate)</span>
+                                  )}
+                                </div>
+                                <ReasoningBox reasoning={triage.reasoning} title="AI Triage" />
+                                {(triage.based_on_cases ?? 0) > 0 && (
+                                  <div className="space-y-1">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setTriageResults((prev) => ({
+                                          ...prev,
+                                          [issue.id]: { ...prev[issue.id]!, showCases: !prev[issue.id]?.showCases },
+                                        }))
+                                      }
+                                      className="text-xs text-accent hover:underline"
+                                    >
+                                      Based on {triage.based_on_cases} past case{triage.based_on_cases === 1 ? "" : "s"}
+                                      {triage.showCases ? " (hide)" : " (show)"}
+                                    </button>
+                                    {triage.showCases && triage.retrieved_cases && triage.retrieved_cases.length > 0 && (
+                                      <div className="space-y-2 mt-1">
+                                        {triage.retrieved_cases.map((c, idx) => (
+                                          <div key={idx} className="text-xs text-slate-400 border border-border/50 rounded p-2">
+                                            <span className="text-slate-500 uppercase">{c.scope.replace("_", " ")} · </span>
+                                            {c.description}
+                                            <p className="mt-1 text-slate-500">
+                                              Resolved: {c.resolution_comment} ({c.duration_hours ?? "?"}h, {c.assigned_team})
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Staff Resolution & Comment Controls */}
                       <div className="border-t border-border/60 pt-3 space-y-3">
@@ -721,7 +1083,7 @@ export default function MunicipalityDashboardPage() {
             <div className="space-y-4">
               <p className="text-xs text-slate-400">
                 Post an announcement to the citizen disruption feed for the selected area and email all
-                configured recipients via Resend.
+                configured recipients via Gmail SMTP.
               </p>
 
               <form onSubmit={handleSendAnnouncement} className="space-y-4">
@@ -741,6 +1103,39 @@ export default function MunicipalityDashboardPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* AI Draft Assistant */}
+                <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+                  <p className="text-xs font-medium text-accent flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Draft with AI — Gemma 4
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      id="announce-hint-input"
+                      type="text"
+                      value={announceHint}
+                      onChange={(e) => setAnnounceHint(e.target.value)}
+                      placeholder='Short note: e.g. "pipe repair Tue 10am-2pm Ward 4"'
+                      className="flex-1 bg-white/5 border border-border rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-accent/50"
+                    />
+                    <button
+                      id="announce-draft-btn"
+                      type="button"
+                      onClick={handleDraftAnnouncement}
+                      disabled={draftLoading || !announceHint.trim()}
+                      className="px-3 py-1.5 rounded-lg bg-accent text-black text-xs font-semibold hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                    >
+                      {draftLoading ? (
+                        <span className="inline-block w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3 h-3" />
+                      )}
+                      Draft
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500">AI will fill the message below — you can edit before sending.</p>
                 </div>
 
                 <div className="space-y-1.5">

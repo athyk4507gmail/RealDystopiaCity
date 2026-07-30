@@ -8,8 +8,8 @@
  */
 export const NOTIFICATION_RECIPIENTS: string[] = [
   "sujalkanbargisk@gmail.com",
-  "risingsamurai89@gmail.com",
-  "boombabyy4507@gmail.com",
+  "rid.patil1@gmail.com",
+
 ];
 
 

@@ -1,4 +1,4 @@
-# CityPulse AI
+# DystopiaCITY
 
 Unified intelligence platform for sustainable cities — water distribution, traffic management, and cross-system city metabolism. All AI reasoning powered by **Google Gemma 4** (`google/gemma-4-12B-it`).
 
@@ -51,7 +51,7 @@ The backend uses **SQLite by default** (no Docker required). For PostgreSQL, use
 
 ```bash
 docker compose up -d db
-# Set DATABASE_URL=postgresql+psycopg://citypulse:citypulse@localhost:5432/citypulse in backend/.env
+# Set DATABASE_URL=postgresql+psycopg://dystopiacty:dystopiacty@localhost:5432/dystopiacty in backend/.env
 ```
 
 ### 2. Start Frontend
@@ -118,4 +118,4 @@ Add these to `backend/.env` to enable live/grounded data providers:
 3. **Traffic** — click "Ambulance Green Corridor" for cascading green signals
 4. **Risk Zones** — hit "Play Timeline" to watch risk zones evolve over 5 weeks
 5. **City Metabolism** — trigger a "Heatwave" stress test for the cascade animation
-6. Use **Ask CityPulse AI** chat (bottom-right) on any page for natural-language Q&A
+6. Use **Ask DystopiaCITY** chat (bottom-right) on any page for natural-language Q&A

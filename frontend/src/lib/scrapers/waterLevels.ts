@@ -108,7 +108,7 @@ async function fetchFromDataGovIn(apiKey: string): Promise<WaterLevelReading> {
 async function scrapeCwcBulletin(): Promise<WaterLevelReading> {
   const res = await fetch("https://cwc.gov.in/en/reservoir-storage-bulletin", {
     signal: AbortSignal.timeout(15_000),
-    headers: { "User-Agent": "CityPulseAI/1.0 (smart-city-demo; contact@example.com)" },
+    headers: { "User-Agent": "DystopiaCITY/1.0 (smart-city-demo; contact@example.com)" },
     next: { revalidate: 900 },
   });
 
@@ -121,10 +121,12 @@ async function scrapeCwcBulletin(): Promise<WaterLevelReading> {
   let capacityPct: number | null = null;
   let lastUpdated: string | null = null;
 
-  $("table tr").each((_, row) => {
-    const cells = $(row)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  $("table tr").each(function (this: any) {
+    const cells = $(this)
       .find("td, th")
-      .map((__, cell) => $(cell).text().trim())
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map(function (this: any) { return $(this).text().trim(); })
       .get();
 
     const rowText = cells.join(" ").toLowerCase();

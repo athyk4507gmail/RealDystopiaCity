@@ -9,11 +9,22 @@ export interface PipelineAccount {
   lastPaidDate: string | null;
   connectionType: "residential" | "commercial";
   meterReading: number; // current month kL
+  paymentId?: string;
+  orderId?: string;
+}
+
+export interface PaymentLog {
+  accountNumber: string;
+  orderId: string;
+  paymentId: string;
+  amount: number;
+  currency: string;
+  status: "captured" | "verified";
+  timestamp: string;
 }
 
 /**
- * Mock pipeline accounts — 8 realistic Bangalore entries.
- * In the demo, status is mutated in-memory to simulate payment.
+ * Pipeline accounts database (in-memory store).
  */
 export const MOCK_ACCOUNTS: PipelineAccount[] = [
   {
@@ -114,28 +125,70 @@ export const MOCK_ACCOUNTS: PipelineAccount[] = [
   },
 ];
 
-/** In-memory override store — set when citizen pays a bill in the demo */
-const paymentOverrides = new Map<string, "paid">();
+/** In-memory payment overrides & transaction log store */
+const paymentOverrides = new Map<string, { status: "paid"; paymentId: string; orderId?: string; timestamp: string }>();
+const paymentLogs: PaymentLog[] = [];
 
 export function getAccount(accountNumber: string): PipelineAccount | null {
   const acc = MOCK_ACCOUNTS.find((a) => a.accountNumber === accountNumber);
   if (!acc) return null;
-  if (paymentOverrides.has(accountNumber)) {
-    return { ...acc, paymentStatus: "paid", lastPaidDate: new Date().toISOString().split("T")[0] };
+  const override = paymentOverrides.get(accountNumber);
+  if (override) {
+    return {
+      ...acc,
+      paymentStatus: "paid",
+      lastPaidDate: override.timestamp.split("T")[0],
+      paymentId: override.paymentId,
+      orderId: override.orderId,
+    };
   }
   return acc;
 }
 
-export function markAsPaid(accountNumber: string): void {
-  paymentOverrides.set(accountNumber, "paid");
+export function markAsPaid(
+  accountNumber: string,
+  paymentId: string,
+  orderId?: string,
+  amount?: number
+): PaymentLog {
+  const timestamp = new Date().toISOString();
+  paymentOverrides.set(accountNumber, {
+    status: "paid",
+    paymentId,
+    orderId,
+    timestamp,
+  });
+
+  const acc = getAccount(accountNumber);
+  const log: PaymentLog = {
+    accountNumber,
+    orderId: orderId || "order_direct",
+    paymentId,
+    amount: amount || acc?.monthlyBillAmount || 0,
+    currency: "INR",
+    status: "verified",
+    timestamp,
+  };
+  paymentLogs.push(log);
+  return log;
 }
 
 export function getAllAccounts(): PipelineAccount[] {
-  return MOCK_ACCOUNTS.map((acc) => ({
-    ...acc,
-    paymentStatus: paymentOverrides.has(acc.accountNumber) ? "paid" : acc.paymentStatus,
-    lastPaidDate: paymentOverrides.has(acc.accountNumber)
-      ? new Date().toISOString().split("T")[0]
-      : acc.lastPaidDate,
-  }));
+  return MOCK_ACCOUNTS.map((acc) => {
+    const override = paymentOverrides.get(acc.accountNumber);
+    if (override) {
+      return {
+        ...acc,
+        paymentStatus: "paid",
+        lastPaidDate: override.timestamp.split("T")[0],
+        paymentId: override.paymentId,
+        orderId: override.orderId,
+      };
+    }
+    return acc;
+  });
+}
+
+export function getPaymentLogs(): PaymentLog[] {
+  return paymentLogs;
 }

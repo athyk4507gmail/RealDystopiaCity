@@ -1,0 +1,27 @@
+// TEMP: replace with real Complaints API call once merged — see getHealthTaggedComplaints()
+// Shape: list of { ward_id, ward_name, complaint_count_7d, categories }
+// complaint_count_7d = complaints matching health-relevant keywords in a rolling 7-day window
+// Categories: fever, mosquito, drainage_overflow, garbage_water_mix, water_borne
+// Counts are plausible synthetic values; clearly labeled "simulated" in the UI wherever displayed.
+[
+  { "ward_id": 1,  "ward_name": "Shivaji Nagar",   "complaint_count_7d": 4,  "categories": {"mosquito": 2, "drainage_overflow": 2} },
+  { "ward_id": 2,  "ward_name": "Koramangala",     "complaint_count_7d": 9,  "categories": {"fever": 2, "mosquito": 4, "drainage_overflow": 3} },
+  { "ward_id": 3,  "ward_name": "Indiranagar",     "complaint_count_7d": 5,  "categories": {"mosquito": 3, "garbage_water_mix": 2} },
+  { "ward_id": 4,  "ward_name": "Whitefield",      "complaint_count_7d": 11, "categories": {"fever": 3, "mosquito": 5, "drainage_overflow": 3} },
+  { "ward_id": 5,  "ward_name": "Jayanagar",       "complaint_count_7d": 2,  "categories": {"mosquito": 1, "drainage_overflow": 1} },
+  { "ward_id": 6,  "ward_name": "Malleshwaram",    "complaint_count_7d": 3,  "categories": {"mosquito": 2, "water_borne": 1} },
+  { "ward_id": 7,  "ward_name": "Rajajinagar",     "complaint_count_7d": 1,  "categories": {"mosquito": 1} },
+  { "ward_id": 8,  "ward_name": "BTM Layout",      "complaint_count_7d": 10, "categories": {"fever": 3, "mosquito": 4, "drainage_overflow": 3} },
+  { "ward_id": 9,  "ward_name": "Hebbal",          "complaint_count_7d": 4,  "categories": {"mosquito": 2, "garbage_water_mix": 2} },
+  { "ward_id": 10, "ward_name": "Yelahanka",       "complaint_count_7d": 2,  "categories": {"mosquito": 1, "drainage_overflow": 1} },
+  { "ward_id": 11, "ward_name": "Electronic City", "complaint_count_7d": 6,  "categories": {"fever": 2, "mosquito": 2, "drainage_overflow": 2} },
+  { "ward_id": 12, "ward_name": "Marathahalli",    "complaint_count_7d": 13, "categories": {"fever": 4, "mosquito": 6, "drainage_overflow": 2, "garbage_water_mix": 1} },
+  { "ward_id": 13, "ward_name": "Banashankari",    "complaint_count_7d": 5,  "categories": {"mosquito": 3, "water_borne": 2} },
+  { "ward_id": 14, "ward_name": "Vijayanagar",     "complaint_count_7d": 2,  "categories": {"mosquito": 2} },
+  { "ward_id": 15, "ward_name": "HSR Layout",      "complaint_count_7d": 7,  "categories": {"fever": 2, "mosquito": 3, "drainage_overflow": 2} },
+  { "ward_id": 16, "ward_name": "Frazer Town",     "complaint_count_7d": 4,  "categories": {"mosquito": 2, "garbage_water_mix": 2} },
+  { "ward_id": 17, "ward_name": "Basavanagudi",    "complaint_count_7d": 3,  "categories": {"mosquito": 2, "drainage_overflow": 1} },
+  { "ward_id": 18, "ward_name": "JP Nagar",        "complaint_count_7d": 6,  "categories": {"fever": 1, "mosquito": 3, "drainage_overflow": 2} },
+  { "ward_id": 19, "ward_name": "Bellandur",       "complaint_count_7d": 14, "categories": {"fever": 5, "mosquito": 5, "drainage_overflow": 3, "garbage_water_mix": 1} },
+  { "ward_id": 20, "ward_name": "Sarjapur",        "complaint_count_7d": 9,  "categories": {"fever": 2, "mosquito": 4, "drainage_overflow": 3} }
+]

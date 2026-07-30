@@ -35,6 +35,11 @@ export interface MapPolygon {
   onPolygonClick?: (polygon: MapPolygon) => void;
 }
 
+export interface MapLegendItem {
+  color: string;
+  label: string;
+}
+
 interface MapboxMapProps {
   center?: [number, number];
   zoom?: number;
@@ -43,6 +48,7 @@ interface MapboxMapProps {
   polygons?: MapPolygon[];
   heatmapPoints?: { lat: number; lng: number; weight: number }[];
   className?: string;
+  legendItems?: MapLegendItem[];
   onMapReady?: (map: mapboxgl.Map) => void;
 }
 
@@ -74,11 +80,13 @@ function MapboxMapInner({
   polygons = [],
   heatmapPoints = [],
   className = "h-full w-full",
+  legendItems = [],
   onMapReady,
 }: MapboxMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -125,11 +133,15 @@ function MapboxMapInner({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) {
-      map?.once("load", () => updateLayers());
+    if (!map) return;
+
+    const setup = () => updateLayers();
+
+    if (!map.isStyleLoaded()) {
+      map.once("load", setup);
       return;
     }
-    updateLayers();
+    setup();
 
     function updateLayers() {
       if (!map) return;
@@ -167,48 +179,60 @@ function MapboxMapInner({
         const id = `poly-${poly.id}`;
         const data = {
           type: "Feature" as const,
-          properties: {},
+          properties: { popup: poly.popup || "" },
           geometry: { type: "Polygon" as const, coordinates: poly.coordinates },
         };
+        const fillId = `${id}-fill`;
+        const lineId = `${id}-line`;
+
         if (map.getSource(id)) {
           (map.getSource(id) as mapboxgl.GeoJSONSource).setData(data);
+          if (map.getLayer(fillId)) {
+            map.setPaintProperty(fillId, "fill-color", poly.fillColor || "#06b6d4");
+            map.setPaintProperty(fillId, "fill-opacity", poly.fillOpacity ?? 0.45);
+          }
+          if (map.getLayer(lineId)) {
+            map.setPaintProperty(lineId, "line-color", poly.lineColor || "#06b6d4");
+          }
         } else {
           map.addSource(id, { type: "geojson", data });
           map.addLayer({
-            id: `${id}-fill`,
+            id: fillId,
             type: "fill",
             source: id,
             paint: {
               "fill-color": poly.fillColor || "#06b6d4",
-              "fill-opacity": poly.fillOpacity ?? 0.3,
+              "fill-opacity": poly.fillOpacity ?? 0.45,
             },
           });
           map.addLayer({
-            id: `${id}-line`,
+            id: lineId,
             type: "line",
             source: id,
             paint: { "line-color": poly.lineColor || "#06b6d4", "line-width": 2 },
           });
 
-          if (poly.popup || poly.onPolygonClick) {
-            map.on("click", `${id}-fill`, (e) => {
-              if (poly.onPolygonClick) {
-                poly.onPolygonClick(poly);
-              }
-              if (poly.popup) {
-                new mapboxgl.Popup({ offset: 15 })
-                  .setLngLat(e.lngLat)
-                  .setHTML(poly.popup)
-                  .addTo(map);
-              }
-            });
-            map.on("mouseenter", `${id}-fill`, () => {
-              map.getCanvas().style.cursor = "pointer";
-            });
-            map.on("mouseleave", `${id}-fill`, () => {
-              map.getCanvas().style.cursor = "";
-            });
-          }
+          const showPopup = (e: mapboxgl.MapLayerMouseEvent) => {
+            if (poly.onPolygonClick) {
+              poly.onPolygonClick(poly);
+            }
+            const feature = e.features?.[0];
+            const html = feature?.properties?.popup;
+            if (!html) return;
+            if (popupRef.current) popupRef.current.remove();
+            popupRef.current = new mapboxgl.Popup({ closeOnClick: true, offset: 15 })
+              .setLngLat(e.lngLat)
+              .setHTML(String(html))
+              .addTo(map);
+          };
+
+          map.on("click", fillId, showPopup);
+          map.on("mouseenter", fillId, () => {
+            map.getCanvas().style.cursor = "pointer";
+          });
+          map.on("mouseleave", fillId, () => {
+            map.getCanvas().style.cursor = "";
+          });
         }
       });
 
@@ -245,5 +269,25 @@ function MapboxMapInner({
     }
   }, [lines, polygons, heatmapPoints]);
 
-  return <div ref={containerRef} className={className} />;
+  return (
+    <div className={`relative ${className}`}>
+      <div ref={containerRef} className="h-full w-full" />
+      {legendItems.length > 0 && (
+        <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-border bg-card/95 p-3 text-xs shadow-lg">
+          <p className="font-medium text-slate-300 mb-2">Today&apos;s Supply Status</p>
+          <div className="space-y-1.5">
+            {legendItems.map((item) => (
+              <div key={item.label} className="flex items-center gap-2 text-slate-400">
+                <span
+                  className="w-3 h-3 rounded-sm border border-white/20 shrink-0"
+                  style={{ backgroundColor: item.color }}
+                />
+                {item.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
