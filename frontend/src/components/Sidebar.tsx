@@ -15,10 +15,12 @@ import {
   Radio,
   Crosshair,
   Skull,
+  Bot,
 } from "lucide-react";
 import clsx from "clsx";
 
 const modules = [
+  { href: "/agent", label: "Civic Agent", icon: Bot, color: "text-accent" },
   { href: "/water", label: "Water Distribution", icon: Droplets, color: "text-cyan-400" },
   { href: "/complaints", label: "Complaints", icon: MessageSquare, color: "text-rose-400" },
   { href: "/trust-score", label: "Trust Score", icon: Bus, color: "text-blue-400" },
