@@ -288,7 +288,7 @@ export default function WaterPage() {
           </div>
         </TiltCard>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 relative z-10 mb-2">
           {loading ? (
             <>
               <StatCardSkeleton />
@@ -339,7 +339,7 @@ export default function WaterPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10 mt-0">
           <div className="stat-subcard hover:shadow-[0_0_20px_rgba(6,182,212,0.1)] transition-shadow duration-300">
             <div className="flex items-center gap-2 mb-3">
               <div className="live-dot" />

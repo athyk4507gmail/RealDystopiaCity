@@ -56,10 +56,10 @@ export default function ChatPanel({ module }: { module: string }) {
       </button>
 
       {open && (
-        <div className="fixed bottom-6 right-6 z-50 w-96 h-[500px] flex flex-col glass-panel shadow-2xl">
+        <div className="chat-panel fixed bottom-6 right-6 z-50 w-96 h-[500px] flex flex-col glass-panel shadow-2xl">
           <div className="flex items-center justify-between p-4 border-b border-border">
             <div>
-              <h3 className="font-semibold text-sm">Ask CityPulse AI</h3>
+              <h3 className="citypulse-brand-text font-semibold text-sm">Ask CityPulse AI</h3>
               <p className="text-xs text-slate-400">Gemma 4 powered</p>
             </div>
             <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-foreground">

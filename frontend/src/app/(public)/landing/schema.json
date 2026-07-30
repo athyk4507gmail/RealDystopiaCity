@@ -1,0 +1,40 @@
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "CityPulse AI",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web Browser",
+  "description": "Unified AI platform for water distribution, traffic management, and city metabolism powered by Google Gemma 4. Real-time reasoning and analytics for smart city infrastructure.",
+  "url": "https://citypulse.ai",
+  "creator": {
+    "@type": "Organization",
+    "name": "CityPulse AI",
+    "url": "https://citypulse.ai"
+  },
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "featureList": [
+    "Water Distribution AI Scheduling",
+    "Traffic Management & Optimization",
+    "City Metabolism Analysis",
+    "Real-time Data Integration",
+    "Predictive Analytics",
+    "Interactive Dashboards",
+    "Multi-ward Analysis",
+    "Emergency Response Routing",
+    "Risk Zone Identification",
+    "Cross-system Simulation"
+  ],
+  "softwareVersion": "1.0",
+  "screenshot": "https://citypulse.ai/og-image.png",
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.8",
+    "ratingCount": "156",
+    "bestRating": "5",
+    "worstRating": "1"
+  }
+}

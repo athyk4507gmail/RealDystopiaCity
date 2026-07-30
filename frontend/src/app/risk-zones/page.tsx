@@ -112,7 +112,7 @@ export default function RiskZonesPage() {
         </div>
       </TiltCard>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 gap-4 mb-2">
         <StatCard label="Avg Risk" value={currentWeek?.avg_risk ?? "—"} color="yellow" sourceType="estimated" />
         <StatCard label="High Risk Segments" value={highRisk.length} color="red" sourceType="estimated" />
         <StatCard label="Reported Black Spots" value={blackSpots.length} color="purple" sourceType="reported" />

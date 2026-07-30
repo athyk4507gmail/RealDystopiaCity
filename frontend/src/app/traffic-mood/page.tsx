@@ -153,7 +153,7 @@ export default function TrafficMoodPage() {
           </div>
         </TiltCard>
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-4 gap-4 mb-2">
           {loading || liveLoading ? (
             <>
               <StatCardSkeleton />

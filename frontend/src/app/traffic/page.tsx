@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useRef } from "react";
-import { Ambulance, Route } from "lucide-react";
+import { Ambulance, Route, AlertTriangle } from "lucide-react";
 import { api, TrafficFeedItem, SignalRecommendation, AmbulanceCorridor, AltRoute } from "@/lib/api";
 import type { TrafficReading } from "@/lib/scrapers/types";
 import { useLiveData } from "@/hooks/useLiveData";
@@ -15,12 +15,31 @@ import DataError from "@/components/DataError";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { TiltCard } from "@/components/TiltCard";
 
+interface CarData {
+  id: string;
+  lat: number;
+  lng: number;
+  velocityLat: number;
+  velocityLng: number;
+  crashed: boolean;
+  crashTime?: number;
+}
+
+interface AccidentEvent {
+  id: string;
+  lat: number;
+  lng: number;
+  time: number;
+  cars: string[];
+}
+
 export default function TrafficPage() {
   const [feed, setFeed] = useState<TrafficFeedItem[]>([]);
   const [recommendations, setRecommendations] = useState<SignalRecommendation[]>([]);
   const [corridor, setCorridor] = useState<AmbulanceCorridor | null>(null);
   const [altRoutes, setAltRoutes] = useState<AltRoute[]>([]);
-  const [carMarkers, setCarMarkers] = useState<MapMarker[]>([]);
+  const [cars, setCars] = useState<CarData[]>([]);
+  const [accidents, setAccidents] = useState<AccidentEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const animRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -45,28 +64,104 @@ export default function TrafficPage() {
   useEffect(() => {
     load();
 
-    const cars: MapMarker[] = [];
-    for (let i = 0; i < 20; i++) {
-      cars.push({
-        id: `traffic-car-${i}`,
+    // Initialize 40 cars with random positions and velocities
+    const initialCars: CarData[] = [];
+    for (let i = 0; i < 40; i++) {
+      initialCars.push({
+        id: `car-${i}`,
         lat: 12.97 + Math.random() * 0.03,
         lng: 77.59 + Math.random() * 0.03,
-        className: "car-marker",
+        velocityLat: (Math.random() - 0.5) * 0.002,
+        velocityLng: (Math.random() - 0.5) * 0.002,
+        crashed: false,
       });
     }
-    setCarMarkers(cars);
+    setCars(initialCars);
 
+    // Animation loop - check for collisions and update positions
     animRef.current = setInterval(() => {
-      setCarMarkers((prev) =>
-        prev.map((c) => ({
-          ...c,
-          lat: c.lat + (Math.random() - 0.5) * 0.0005,
-          lng: c.lng + (Math.random() - 0.5) * 0.0005,
-        }))
-      );
-    }, 500);
+      setCars((prev) => {
+        const updated = prev.map((car) => {
+          if (car.crashed) {
+            // Crashed cars fade out after 3 seconds
+            if (car.crashTime && Date.now() - car.crashTime > 3000) {
+              return {
+                ...car,
+                lat: 12.97 + Math.random() * 0.03,
+                lng: 77.59 + Math.random() * 0.03,
+                velocityLat: (Math.random() - 0.5) * 0.002,
+                velocityLng: (Math.random() - 0.5) * 0.002,
+                crashed: false,
+                crashTime: undefined,
+              };
+            }
+            return car;
+          }
 
-    return () => { if (animRef.current) clearInterval(animRef.current); };
+          // Update position with velocity
+          let newLat = car.lat + car.velocityLat;
+          let newLng = car.lng + car.velocityLng;
+
+          // Bounce off boundaries
+          if (newLat < 12.97 || newLat > 13.0) {
+            car.velocityLat *= -1;
+            newLat = car.lat + car.velocityLat;
+          }
+          if (newLng < 77.59 || newLng > 77.62) {
+            car.velocityLng *= -1;
+            newLng = car.lng + car.velocityLng;
+          }
+
+          return { ...car, lat: newLat, lng: newLng };
+        });
+
+        // Check for collisions (distance < threshold)
+        const collisionThreshold = 0.0008; // ~90 meters
+        const newAccidents: AccidentEvent[] = [];
+
+        for (let i = 0; i < updated.length; i++) {
+          if (updated[i].crashed) continue;
+          for (let j = i + 1; j < updated.length; j++) {
+            if (updated[j].crashed) continue;
+
+            const dist = Math.sqrt(
+              Math.pow(updated[i].lat - updated[j].lat, 2) +
+              Math.pow(updated[i].lng - updated[j].lng, 2)
+            );
+
+            if (dist < collisionThreshold) {
+              // Collision detected!
+              updated[i].crashed = true;
+              updated[i].crashTime = Date.now();
+              updated[j].crashed = true;
+              updated[j].crashTime = Date.now();
+
+              newAccidents.push({
+                id: `accident-${Date.now()}-${i}-${j}`,
+                lat: (updated[i].lat + updated[j].lat) / 2,
+                lng: (updated[i].lng + updated[j].lng) / 2,
+                time: Date.now(),
+                cars: [updated[i].id, updated[j].id],
+              });
+            }
+          }
+        }
+
+        if (newAccidents.length > 0) {
+          setAccidents((prev) => {
+            const all = [...prev, ...newAccidents];
+            // Keep only last 20 accidents
+            return all.slice(-20);
+          });
+        }
+
+        return updated;
+      });
+    }, 100); // Update every 100ms for smoother collisions
+
+    return () => {
+      if (animRef.current) clearInterval(animRef.current);
+    };
   }, []);
 
   const triggerAmbulance = async () => {
@@ -111,6 +206,27 @@ export default function TrafficPage() {
       : "car-marker",
   }));
 
+  // Convert cars to markers
+  const carMarkers: MapMarker[] = cars.map((car) => ({
+    id: car.id,
+    lat: car.lat,
+    lng: car.lng,
+    color: car.crashed ? "#ef4444" : "#3b82f6",
+    className: car.crashed ? "crash-marker pulse-accident" : "car-marker",
+  }));
+
+  // Convert accidents to markers
+  const accidentMarkers: MapMarker[] = accidents
+    .filter((acc) => Date.now() - acc.time < 10000) // Show for 10 seconds
+    .map((acc) => ({
+      id: acc.id,
+      lat: acc.lat,
+      lng: acc.lng,
+      color: "#dc2626",
+      popup: `<strong>⚠️ ACCIDENT</strong><br/>Cars: ${acc.cars.join(", ")}<br/>${Math.floor((Date.now() - acc.time) / 1000)}s ago`,
+      className: "accident-marker pulse-accident",
+    }));
+
   const corridorLine: MapLine[] = corridor
     ? [{
         id: "corridor",
@@ -122,6 +238,64 @@ export default function TrafficPage() {
 
   return (
     <ErrorBoundary fallbackTitle="Traffic module failed to render">
+      <section className="live-traffic-section">
+        {/* Rainwater Widget - Fixed Top Right */}
+        <div style={{ position: 'fixed', top: 0, right: 0, zIndex: 10000, pointerEvents: 'none' }}>
+          <div id="rw-widget">
+            <div className="rw-stage">
+              <div className="rw-panel"></div>
+              <div className="rw-cloud rw-cloud--a">
+                <svg viewBox="0 0 100 60"><path d="M20 45 Q5 45 5 32 Q5 20 18 20 Q20 8 35 8 Q50 8 52 20 Q65 20 65 32 Q65 45 50 45 Z" fill="#bfe0f5" stroke="#7fb8de" strokeWidth="2"/></svg>
+              </div>
+              <div className="rw-cloud rw-cloud--b">
+                <svg viewBox="0 0 100 60"><path d="M20 45 Q5 45 5 32 Q5 20 18 20 Q20 8 35 8 Q50 8 52 20 Q65 20 65 32 Q65 45 50 45 Z" fill="#cfe9f8" stroke="#8fc4e6" strokeWidth="2"/></svg>
+              </div>
+              <div className="rw-rain">
+                <div className="rw-drop"></div>
+                <div className="rw-drop"></div>
+                <div className="rw-drop"></div>
+                <div className="rw-drop"></div>
+                <div className="rw-drop"></div>
+              </div>
+              <div className="rw-funnel">
+                <svg viewBox="0 0 52 40">
+                  <path d="M2 4 L50 4 L32 30 L20 30 Z" fill="#e8eef2" stroke="#9fb0ba" strokeWidth="2"/>
+                  <path d="M8 4 L44 4 L26 12 Z" fill="#4fa8dd" opacity="0.85"/>
+                </svg>
+              </div>
+              <div className="rw-pipe"></div>
+              <div className="rw-pipe-water"><span></span></div>
+              <div className="rw-tank">
+                <div className="rw-tank-water"></div>
+              </div>
+              <div className="rw-uses">
+                <div className="rw-use" title="Garden">
+                  <svg viewBox="0 0 24 24"><path d="M12 22c0-6 0-10 0-14" stroke="#3f8f52" strokeWidth="2" fill="none" strokeLinecap="round"/><path d="M12 14c-4 0-6-3-6-6 3 0 6 2 6 6z" fill="#5cb86e"/><path d="M12 12c4 0 6-3 6-6-3 0-6 2-6 6z" fill="#3f8f52"/></svg>
+                </div>
+                <div className="rw-use" title="Household use">
+                  <svg viewBox="0 0 24 24"><path d="M12 3c3 4 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 3-7 6-11z" fill="#4fa8dd"/></svg>
+                </div>
+                <div className="rw-use" title="Pool / outdoor">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="14" width="18" height="7" rx="1.5" fill="#7cc4ea"/><path d="M3 14q2-2 4 0t4 0 4 0 4 0" stroke="#2f8fc7" strokeWidth="1.5" fill="none"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <video
+          className="traffic-bg-video"
+          autoPlay
+          loop
+          muted
+          playsInline
+          poster="/assets/traffic-poster.jpg"
+          src="/assets/traffic-loop.mp4"
+          aria-hidden="true"
+        />
+        <div className="traffic-bg-overlay"></div>
+
+        <div className="live-traffic-content">
       <div className="page-panel">
         {error && <DataError message={error} onRetry={load} />}
         {liveError && <DataError message={liveError} onRetry={refreshLive} />}
@@ -161,7 +335,7 @@ export default function TrafficPage() {
           </div>
         </TiltCard>
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-4 gap-4 mb-2">
           {loading || liveLoading ? (
             <>
               <StatCardSkeleton />
@@ -179,8 +353,13 @@ export default function TrafficPage() {
                 color="yellow"
                 sourceType={liveTraffic?.sourceType === "live" ? "live" : "estimated"}
               />
-              <StatCard label="Heavy Traffic" value={feed.filter((f) => f.status === "heavy").length} color="red" sourceType="live" />
-              <StatCard label="Corridor" value={corridor ? "Active" : "Standby"} color="purple" sourceType="estimated" />
+              <StatCard label="Active Cars" value={cars.length} color="blue" sourceType="live" />
+              <StatCard 
+                label="Accidents" 
+                value={accidents.filter(a => Date.now() - a.time < 10000).length} 
+                color="red" 
+                sourceType="live" 
+              />
             </>
           )}
         </div>
@@ -190,7 +369,11 @@ export default function TrafficPage() {
             {loading ? (
               <MapSkeleton className="h-full w-full" />
             ) : (
-              <MapboxMap markers={[...signalMarkers, ...carMarkers]} lines={corridorLine} zoom={11.5} />
+              <MapboxMap 
+                markers={[...signalMarkers, ...carMarkers, ...accidentMarkers]} 
+                lines={corridorLine} 
+                zoom={11.5} 
+              />
             )}
           </div>
 
@@ -244,6 +427,8 @@ export default function TrafficPage() {
           </div>
         )}
       </div>
+        </div>
+      </section>
     </ErrorBoundary>
   );
 }

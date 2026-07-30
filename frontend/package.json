@@ -6,7 +6,14 @@
     "dev": "next dev -p 3010",
     "build": "next build",
     "start": "next start -p 3010",
-    "lint": "eslint"
+    "lint": "eslint",
+    "type-check": "tsc --noEmit",
+    "deploy": "bash deploy.sh",
+    "deploy:vercel": "vercel --prod",
+    "deploy:preview": "vercel",
+    "analyze": "ANALYZE=true npm run build",
+    "generate:og": "node scripts/generate-og-image.js",
+    "open:og-template": "open scripts/og-image-template.html || start scripts/og-image-template.html"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.1",

@@ -16,6 +16,7 @@ const moduleMap: Record<string, string> = {
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const isPublicPage = pathname === "/" || pathname === "/landing" || pathname === "/signin";
   const module = Object.entries(moduleMap).find(([path]) => pathname.startsWith(path))?.[1] || "global";
 
   const mainRef = useRef<HTMLDivElement>(null);
@@ -28,6 +29,20 @@ export default function DashboardShell({ children }: { children: React.ReactNode
     mainEl.addEventListener("scroll", onScroll, { passive: true });
     return () => mainEl.removeEventListener("scroll", onScroll);
   }, []);
+
+  if (isPublicPage) {
+    return (
+      <div className="min-h-screen w-full relative overflow-x-hidden">
+        <div
+          className="ambient-particles-bg"
+          style={{ transform: `translateY(${-scrollY * 0.12}px)` }}
+        />
+        <main ref={mainRef} className="w-full min-h-screen z-10 relative">
+          {children}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden relative">

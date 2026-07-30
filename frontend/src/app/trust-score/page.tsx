@@ -50,7 +50,7 @@ export default function TrustScorePage() {
         </div>
       </TiltCard>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 gap-4 mb-2">
         <StatCard label="Routes Tracked" value={routes.length} color="cyan" sourceType="reported" />
         <StatCard label="Avg Trust Score" value={avgScore} color="green" sourceType="estimated" />
         <StatCard label="Best Route" value={routes[0] ? `Route ${routes[0].route_number}` : "—"} color="purple" sourceType="estimated" />

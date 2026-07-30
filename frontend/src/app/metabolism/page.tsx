@@ -179,14 +179,14 @@ export default function MetabolismPage() {
         )}
 
         {vitalsLoading || trafficLoading || aqiLoading ? (
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-4 gap-4 mb-2">
             <StatCardSkeleton />
             <StatCardSkeleton />
             <StatCardSkeleton />
             <StatCardSkeleton />
           </div>
         ) : displayVitals && (
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-4 gap-4 mb-2">
             <VitalGauge label="Water Pressure" value={displayVitals.water_pressure} icon={Droplets} unit="%" before={stressResult?.vitals_before.water_pressure} />
             <VitalGauge label="Traffic Flow" value={displayVitals.traffic_flow} icon={Car} unit="%" before={stressResult?.vitals_before.traffic_flow} />
             <VitalGauge label="Energy Load" value={displayVitals.energy_load} icon={Zap} unit="%" before={stressResult?.vitals_before.energy_load} />
@@ -194,7 +194,7 @@ export default function MetabolismPage() {
           </div>
         )}
 
-        <div className="glass-panel">
+        <div className="glass-panel mb-2">
           <h3 className="font-medium mb-4 flex items-center gap-2">
             <Activity className="w-5 h-5 text-accent" />
             Stress Test — Trigger Cascade Event
@@ -205,7 +205,7 @@ export default function MetabolismPage() {
                 key={event.id}
                 onClick={() => runStressTest(event.id)}
                 disabled={running}
-                className="glass-input hover:border-accent/30 hover:bg-accent/5 transition-colors disabled:opacity-50 text-center cursor-pointer"
+                className="stress-test-btn glass-input hover:border-accent/30 hover:bg-accent/5 transition-colors disabled:opacity-50 text-center cursor-pointer"
               >
                 <span className="text-2xl">{event.icon}</span>
                 <p className="text-sm font-medium mt-2">{event.label}</p>
@@ -215,7 +215,7 @@ export default function MetabolismPage() {
         </div>
 
         {running && (
-          <div className="glass-panel border-accent/30">
+          <div className="glass-panel border-accent/30 mb-2">
             <p className="text-sm text-accent animate-pulse mb-4">Cascade propagating across city systems...</p>
             <div className="flex gap-4">
               {["water", "traffic", "energy", "air_quality"].map((node, i) => (
