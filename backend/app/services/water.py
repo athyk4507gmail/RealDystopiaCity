@@ -142,7 +142,7 @@ def _schedule_to_dict(schedule: WaterSchedule, ward_name: str) -> dict:
     }
 
 
-async def get_wards(db: Session) -> list[dict]:
+def get_wards(db: Session) -> list[dict]:
     wards = db.query(Ward).all()
     return [_ward_to_dict(w) for w in wards]
 
@@ -225,8 +225,13 @@ async def _phrase_schedule_reasoning(
     logger.info("Gemma schedule reasoning call starting for ward=%s", ward.name)
     try:
         response = await asyncio.wait_for(
-            gemma.generate(WATER_SCHEDULE_REASONING_PROMPT, prompt),
-            timeout=10.0,
+            gemma.generate(
+                WATER_SCHEDULE_REASONING_PROMPT,
+                prompt,
+                fallback_type="water_planning",
+                timeout=2.0,
+            ),
+            timeout=2.5,
         )
         logger.info(
             "Gemma schedule reasoning response for ward=%s (first 200 chars): %s",
@@ -257,7 +262,6 @@ async def _phrase_schedule_reasoning(
 async def generate_schedule(db: Session) -> list[dict]:
     wards = db.query(Ward).all()
     today = date.today()
-    db.query(WaterSchedule).filter(WaterSchedule.schedule_date == today).delete()
 
     scored: list[dict] = []
     for ward in wards:
@@ -301,7 +305,7 @@ async def generate_schedule(db: Session) -> list[dict]:
         remaining_budget -= alloc
         scheduled_ward_ids.add(ward.id)
 
-    results = []
+    pending_schedules = []
     for index, entry in enumerate(priority_order):
         ward = entry["ward"]
         days_since = entry["days_since"]
@@ -340,8 +344,13 @@ async def generate_schedule(db: Session) -> list[dict]:
             days_since_supply=days_since,
             forced_supply=forced,
         )
+        pending_schedules.append((schedule, ward.name))
+
+    db.query(WaterSchedule).filter(WaterSchedule.schedule_date == today).delete()
+    results = []
+    for schedule, ward_name in pending_schedules:
         db.add(schedule)
-        results.append(_schedule_to_dict(schedule, ward.name))
+        results.append(_schedule_to_dict(schedule, ward_name))
 
     db.commit()
     return results

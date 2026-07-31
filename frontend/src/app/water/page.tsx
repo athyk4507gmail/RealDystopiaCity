@@ -6,8 +6,10 @@ import {
   LineChart, Line, CartesianGrid,
 } from "recharts";
 import { RefreshCw, Upload, ChevronDown, ChevronRight, Droplets, Thermometer, ArrowUp, ArrowDown, Newspaper, Building2, ExternalLink, MessageSquare, Send } from "lucide-react";
+import Link from "next/link";
 import { api, Ward, WaterSchedule, DemandPrediction } from "@/lib/api";
 import type { WaterLevelReading, WeatherReading } from "@/lib/scrapers/types";
+import type { WaterNewsItem } from "@/lib/scrapers/waterNews";
 import { useLiveData } from "@/hooks/useLiveData";
 import MapboxMap from "@/components/MapboxMap";
 import StatCard from "@/components/StatCard";
@@ -26,6 +28,21 @@ function formatLitres(value: number | undefined): string {
   if (value == null) return "—";
   return Math.round(value).toLocaleString("en-IN");
 }
+
+// Category badge colour map for news items
+const NEWS_CATEGORY_COLORS: Record<string, string> = {
+  leakage: "bg-red-500/20 text-red-400 border-red-500/30",
+  "supply-cut": "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  contamination: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+  "general-notice": "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+};
+
+const NEWS_CATEGORY_LABELS: Record<string, string> = {
+  leakage: "Leakage",
+  "supply-cut": "Supply Cut",
+  contamination: "Contamination",
+  "general-notice": "Notice",
+};
 
 const MAP_LEGEND = [
   { color: "#ef4444", label: "Overdue — Priority" },
@@ -123,6 +140,11 @@ export default function WaterPage() {
   const [qaAnswer, setQaAnswer] = useState<string | null>(null);
   const [qaLoading, setQaLoading] = useState(false);
 
+  // News state
+  const [news, setNews] = useState<WaterNewsItem[]>([]);
+  const [newsLoading, setNewsLoading] = useState(true);
+  const [newsError, setNewsError] = useState<string | null>(null);
+
   const {
     data: weather,
     loading: weatherLoading,
@@ -164,6 +186,21 @@ export default function WaterPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Fetch water news from Jina scraper
+  useEffect(() => {
+    setNewsLoading(true);
+    fetch("/api/water/news")
+      .then((r) => r.json())
+      .then((d) => {
+        setNews(d.items ?? []);
+        setNewsLoading(false);
+      })
+      .catch(() => {
+        setNewsError("Could not load water news");
+        setNewsLoading(false);
+      });
+  }, []);
 
   const [flashValues, setFlashValues] = useState<Set<string>>(new Set());
 
@@ -667,6 +704,110 @@ export default function WaterPage() {
               </BarChart>
             </ResponsiveContainer>
           )}
+        </div>
+
+        {/* ============================================================
+            Recent Water Alerts & News (Phase 1 — Jina scraper)
+        ============================================================ */}
+        <div className="glass-panel space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Newspaper className="w-4 h-4 text-accent" />
+              <h3 className="font-medium">Recent Water Alerts &amp; News</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <DataSourceBadge type="live" detail="Scraped via Jina Reader — BWSSB & local news" />
+              <span className="text-xs text-slate-500">Refreshes every 20 min</span>
+            </div>
+          </div>
+
+          {newsLoading && <LoadingSkeleton rows={3} />}
+          {newsError && !newsLoading && (
+            <DataError
+              message={newsError}
+              onRetry={() => {
+                setNewsLoading(true);
+                setNewsError(null);
+                fetch("/api/water/news")
+                  .then((r) => r.json())
+                  .then((d) => { setNews(d.items ?? []); setNewsLoading(false); })
+                  .catch(() => { setNewsError("Could not load water news"); setNewsLoading(false); });
+              }}
+            />
+          )}
+
+          {!newsLoading && !newsError && news.length === 0 && (
+            <p className="text-sm text-slate-500 italic">
+              No recent news items found. Add <code className="text-accent">JINA_API_KEY</code> to{" "}
+              <code>.env.local</code> to enable live scraping.
+            </p>
+          )}
+
+          {!newsLoading && news.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {news.map((item, i) => (
+                <div
+                  key={`${item.source}-${i}`}
+                  className="rounded-lg border border-border p-3 space-y-2 hover:border-accent/30 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded border shrink-0 ${
+                        NEWS_CATEGORY_COLORS[item.category] ?? NEWS_CATEGORY_COLORS["general-notice"]
+                      }`}
+                    >
+                      {NEWS_CATEGORY_LABELS[item.category] ?? "Notice"}
+                    </span>
+                    <span className="text-xs text-slate-500 shrink-0">{item.source}</span>
+                  </div>
+                  <p className="text-sm font-medium leading-snug line-clamp-2">{item.title}</p>
+                  <p className="text-xs text-slate-400 line-clamp-3">{item.summary}</p>
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                  >
+                    Read more <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Portal entry points */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Link
+            href="/water/login?role=municipality"
+            className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 flex items-center gap-4 hover:bg-cyan-500/10 transition-colors"
+          >
+            <div className="rounded-lg bg-cyan-500/10 border border-cyan-500/20 p-3">
+              <Building2 className="w-5 h-5 text-cyan-400" />
+            </div>
+            <div>
+              <p className="font-medium text-sm">Municipality Staff Portal</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Zone management, citizen notifications, account overview
+              </p>
+            </div>
+            <ExternalLink className="w-4 h-4 text-slate-500 ml-auto" />
+          </Link>
+          <Link
+            href="/water/login?role=citizen"
+            className="rounded-xl border border-border p-4 flex items-center gap-4 hover:border-accent/30 hover:bg-white/5 transition-colors"
+          >
+            <div className="rounded-lg bg-white/5 border border-border p-3">
+              <Droplets className="w-5 h-5 text-accent" />
+            </div>
+            <div>
+              <p className="font-medium text-sm">Citizen Self-Service Portal</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                View bills, make demo payments, check supply schedule
+              </p>
+            </div>
+            <ExternalLink className="w-4 h-4 text-slate-500 ml-auto" />
+          </Link>
         </div>
       </div>
     </ErrorBoundary>

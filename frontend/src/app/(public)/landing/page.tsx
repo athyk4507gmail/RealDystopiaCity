@@ -330,7 +330,7 @@ export default function LandingPage() {
               Join municipalities worldwide using CityPulse AI to build smarter, more sustainable urban systems.
             </p>
             <div className="cta-buttons-wrapper">
-              <Link href="/water">
+              <Link href="/agent">
                 <button className="cta-primary-btn">
                   <span>Launch Dashboard</span>
                   <svg className="cta-arrow" width="20" height="20" viewBox="0 0 20 20" fill="none">

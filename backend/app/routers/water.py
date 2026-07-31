@@ -90,8 +90,8 @@ class ScheduleOverrideRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/wards")
-async def list_wards(db: Session = Depends(get_db)):
-    return await water.get_wards(db)
+def list_wards(db: Session = Depends(get_db)):
+    return water.get_wards(db)
 
 
 @router.get("/schedule", response_model=list[WaterScheduleResponse])

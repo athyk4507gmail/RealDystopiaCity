@@ -245,17 +245,17 @@ function LiveCameraCard({ feed, showExplanation }: { feed: RoadCameraFeed; showE
 function LiveCameraStack() {
   const { feeds, loading, refresh, pollIntervalMs } = useLiveCamerasContext();
 
-  if (loading && !feeds.north.raw) {
+  if (loading && !feeds.camera_1.raw) {
     return <LoadingSkeleton rows={6} />;
   }
 
   return (
     <div className="space-y-6">
       {CAMERA_IDS.map((id) => (
-        <LiveCameraCard key={id} feed={feeds[id]} showExplanation={id === "north"} />
+        <LiveCameraCard key={id} feed={feeds[id]} showExplanation={true} />
       ))}
       <p className="text-xs text-slate-500 text-center">
-        Four Caltrans D8 I-10 cameras · shared {pollIntervalMs / 1000}s poll
+        Six Caltrans D8 I-10 cameras · shared {pollIntervalMs / 1000}s poll
         {" · "}
         <button type="button" onClick={refresh} className="text-cyan-400 hover:underline">
           Refresh now

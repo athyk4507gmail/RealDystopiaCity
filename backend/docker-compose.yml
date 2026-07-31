@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMMA_MODEL_ID=${GEMMA_MODEL_ID:-google/gemma-4-12B-it}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///./citypulse.db}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://localhost:11434}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+    volumes:
+      - ./citypulse.db:/app/citypulse.db
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-citypulse}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-citypulse}
+      - POSTGRES_DB=${POSTGRES_DB:-citypulse}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

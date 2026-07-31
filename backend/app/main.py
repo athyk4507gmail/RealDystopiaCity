@@ -26,7 +26,7 @@ from app.routers import (
     water,
 )
 from app.seed.data import seed_database
-from app.services.gemma import explain_live_camera
+from app.services.gemma import explain_live_camera, explain_live_cameras_batch
 from app.services.live_camera import live_camera_background_loop
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
     camera_task = asyncio.create_task(
-        live_camera_background_loop(explain_live_camera)
+        live_camera_background_loop(explain_live_camera, explain_live_cameras_batch)
     )
 
     try:

@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import LiveTrafficAnimation from "@/components/LiveTrafficAnimation";
 import RainwaterWidget from "@/components/RainwaterWidget";
 
 export default function SignInPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -20,7 +22,10 @@ export default function SignInPage() {
     setLoading(true);
     // Auth not yet connected — placeholder only
     console.log("[CityPulse] Sign-in attempted. Auth not yet connected.");
-    setTimeout(() => setLoading(false), 1200);
+    setTimeout(() => {
+      setLoading(false);
+      router.push("/agent"); // Redirect to main dashboard after successful login
+    }, 1200);
   };
 
   return (

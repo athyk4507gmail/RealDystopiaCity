@@ -1,9 +1,11 @@
 from pydantic_settings import BaseSettings
+import logging
 
+logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./dystopiacty.db"
-    gemma_model_id: str = "google/gemma-4-12B-it"
+    gemma_model_id: str = "gemma-4-26b-a4b-it"  # Matches GEMMA_MODEL_ID in .env
     google_api_key: str = ""
     # Generic OpenAI-compatible provider (HuggingFace, OpenRouter, Groq, Together, etc.)
     gemma_api_key: str = ""
@@ -22,3 +24,11 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+# Log on startup to confirm key is loaded
+if settings.google_api_key:
+    masked = settings.google_api_key[:10] + "..." if len(settings.google_api_key) > 10 else "***"
+    print(f"[CONFIG] GOOGLE_API_KEY loaded: {masked}")
+else:
+    print(f"[CONFIG] WARNING: GOOGLE_API_KEY not set or empty")
+print(f"[CONFIG] GEMMA_MODEL_ID: {settings.gemma_model_id}")
+print(f"[CONFIG] Using model: {settings.gemma_model_id}")

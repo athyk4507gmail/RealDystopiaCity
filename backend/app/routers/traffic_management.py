@@ -124,7 +124,8 @@ async def get_live_camera():
 @router.get("/live-cameras")
 async def get_live_cameras():
     """
-    Returns all four road-assigned Caltrans camera states (North/East/South/West).
+    Returns all six camera states (camera_1 through camera_6).
+    Junction A: camera_1, camera_2, camera_3  |  Junction B: camera_4, camera_5, camera_6.
     Updated continuously by the background fetch loop.
     """
     return get_all_live_cameras_state()

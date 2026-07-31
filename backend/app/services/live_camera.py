@@ -14,40 +14,57 @@ from app.services.vision import analyze_frame
 
 logger = logging.getLogger(__name__)
 
-# Four fixed Caltrans D8 I-10 cameras — verified 2026-07-29 via cctvStatusD08.txt + curl.
+# Six fixed Caltrans D8 I-10 cameras — all slugs verified via cctvStatusD08.txt.
+# Junction A (upper): camera_1, camera_2, camera_3  |  Junction B (lower): camera_4, camera_5, camera_6
 LIVE_CAMERAS: dict[str, dict[str, str]] = {
-    "north": {
-        "road": "North",
-        "label": "Camera A · North",
+    # ── Junction A ─────────────────────────────────────────────────────────────
+    "camera_1": {
+        "road": "camera_1",
+        "label": "Camera 1 · I-10 Archibald",
         "slug": "i1011woarchibaldave",
         "source": "Caltrans D8 - I-10 w/o Archibald Ave, Ontario, California",
-        "image_file": "live_camera_north.jpg",
+        "image_file": "live_camera_1.jpg",
     },
-    "east": {
-        "road": "East",
-        "label": "Camera B · East",
+    "camera_2": {
+        "road": "camera_2",
+        "label": "Camera 2 · I-10 Haven",
         "slug": "i1012westofhaven",
         "source": "Caltrans D8 - I-10 west of Haven Ave, Ontario, California",
-        "image_file": "live_camera_east.jpg",
+        "image_file": "live_camera_2.jpg",
     },
-    "south": {
-        "road": "South",
-        "label": "Camera C · South",
+    "camera_3": {
+        "road": "camera_3",
+        "label": "Camera 3 · I-10 Cherry Overcross",
+        "slug": "i1019westsidecherryovercross",
+        "source": "Caltrans D8 - I-10 West Side Cherry Overcross, Fontana, California",
+        "image_file": "live_camera_3.jpg",
+    },
+    # ── Junction B ─────────────────────────────────────────────────────────────
+    "camera_4": {
+        "road": "camera_4",
+        "label": "Camera 4 · I-10 Benson",
         "slug": "i1004bensonavenue",
         "source": "Caltrans D8 - I-10 Benson Ave, Montclair, California",
-        "image_file": "live_camera_south.jpg",
+        "image_file": "live_camera_4.jpg",
     },
-    "west": {
-        "road": "West",
-        "label": "Camera D · West",
+    "camera_5": {
+        "road": "camera_5",
+        "label": "Camera 5 · I-10 Vineyard E",
         "slug": "i1010eastofvineyard",
-        "source": "Caltrans D8 - I-10 east of Vineyard, Ontario, California",
-        "image_file": "live_camera_west.jpg",
+        "source": "Caltrans D8 - I-10 east of Vineyard Ave, Ontario, California",
+        "image_file": "live_camera_5.jpg",
+    },
+    "camera_6": {
+        "road": "camera_6",
+        "label": "Camera 6 · I-10 Mountain E",
+        "slug": "i1005eastofmountainavenue",
+        "source": "Caltrans D8 - I-10 east of Mountain Ave, Ontario, California",
+        "image_file": "live_camera_6.jpg",
     },
 }
 
-# Primary camera for legacy /live-camera endpoint (North / Archibald — unchanged slug).
-PRIMARY_CAMERA_ID = "north"
+# Primary camera for legacy /live-camera endpoint.
+PRIMARY_CAMERA_ID = "camera_1"
 
 _request_headers = {"User-Agent": "DystopiaCITY-CommandSignal/1.0 (+local demo)"}
 
@@ -248,8 +265,9 @@ def _merge_live_state(state: dict[str, Any], explanation: str | None = None) -> 
 
 async def run_live_camera_cycle(
     explain_fn: Callable[[int, int, int, int], Awaitable[str]],
+    explain_batch_fn: Callable[[dict], Awaitable[dict[str, str]]] | None = None,
 ) -> None:
-    """Fetch + analyze all four cameras; Gemma explanation only for North (legacy)."""
+    """Fetch + analyze all six cameras; generate Gemma explanations efficiently (batched)."""
     results: dict[str, dict[str, Any] | None] = {}
     errors: dict[str, str] = {}
 
@@ -276,26 +294,70 @@ async def run_live_camera_cycle(
 
     await asyncio.gather(*(_one(cid) for cid in LIVE_CAMERAS))
 
+    # Generate Gemma explanations using efficient batched call if available
+    if explain_batch_fn:
+        # Collect all camera data for batch processing
+        cameras_to_explain = {}
+        for cid in LIVE_CAMERAS:
+            camera_data = results.get(cid)
+            if camera_data:
+                cameras_to_explain[cid] = {
+                    "vehicle_count": camera_data.get("vehicle_count", 0),
+                    "person_count": camera_data.get("person_count", 0),
+                    "green_seconds": camera_data.get("green_seconds", 0),
+                    "red_seconds": camera_data.get("red_seconds", 0),
+                }
+        
+        if cameras_to_explain:
+            try:
+                explanations = await explain_batch_fn(cameras_to_explain)
+                for cid, explanation in explanations.items():
+                    _merge_camera_state(cid, {"explanation": explanation})
+                logger.info(f"[Gemma] Generated explanations for {len(explanations)} cameras in single batch call")
+            except Exception as exc:
+                logger.exception("Gemma batch explain failed, falling back to individual calls: %s", exc)
+                # Fall back to individual calls if batch fails
+                for cid in LIVE_CAMERAS:
+                    camera_data = results.get(cid)
+                    if camera_data:
+                        try:
+                            explanation = await explain_fn(
+                                camera_data["vehicle_count"],
+                                camera_data["person_count"],
+                                camera_data["green_seconds"],
+                                camera_data["red_seconds"],
+                            )
+                            _merge_camera_state(cid, {"explanation": explanation})
+                        except Exception as exc2:
+                            logger.exception("Gemma explain failed for camera %s: %s", cid, exc2)
+                            _merge_camera_state(cid, {"explanation": ""})
+    else:
+        # Fallback: individual calls (old behavior)
+        for cid in LIVE_CAMERAS:
+            camera_data = results.get(cid)
+            if camera_data:
+                try:
+                    explanation = await explain_fn(
+                        camera_data["vehicle_count"],
+                        camera_data["person_count"],
+                        camera_data["green_seconds"],
+                        camera_data["red_seconds"],
+                    )
+                    _merge_camera_state(cid, {"explanation": explanation})
+                except Exception as exc:
+                    logger.exception("Gemma explain failed for camera %s: %s", cid, exc)
+                    _merge_camera_state(cid, {"explanation": ""})
+    
+    # Also update PRIMARY_CAMERA_ID in the legacy _live_state for backward compatibility
     north = results.get(PRIMARY_CAMERA_ID)
-    if north:
-        try:
-            explanation = await explain_fn(
-                north["vehicle_count"],
-                north["person_count"],
-                north["green_seconds"],
-                north["red_seconds"],
-            )
-            _merge_live_state(north, explanation)
-        except Exception as exc:
-            logger.exception("Gemma explain failed: %s", exc)
-            _merge_live_state(north)
-    elif PRIMARY_CAMERA_ID in errors:
-        _live_state["fetch_error"] = errors[PRIMARY_CAMERA_ID]
+    if north and _live_states.get(PRIMARY_CAMERA_ID, {}).get("explanation"):
+        _merge_live_state(north, _live_states[PRIMARY_CAMERA_ID]["explanation"])
 
 
 async def live_camera_background_loop(
     explain_fn: Callable[[int, int, int, int], Awaitable[str]],
+    explain_batch_fn: Callable[[dict], Awaitable[dict[str, str]]] | None = None,
 ) -> None:
     while True:
-        await run_live_camera_cycle(explain_fn)
+        await run_live_camera_cycle(explain_fn, explain_batch_fn)
         await asyncio.sleep(POLL_INTERVAL_SECONDS)

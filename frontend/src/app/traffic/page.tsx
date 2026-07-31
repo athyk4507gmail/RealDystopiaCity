@@ -353,7 +353,7 @@ export default function TrafficPage() {
                 color="yellow"
                 sourceType={liveTraffic?.sourceType === "live" ? "live" : "estimated"}
               />
-              <StatCard label="Active Cars" value={cars.length} color="blue" sourceType="live" />
+              <StatCard label="Active Cars" value={cars.length} color="cyan" sourceType="live" />
               <StatCard 
                 label="Accidents" 
                 value={accidents.filter(a => Date.now() - a.time < 10000).length} 

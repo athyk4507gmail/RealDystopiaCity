@@ -1,9 +1,12 @@
 import asyncio
+import asyncio
 import base64
 import json
 import logging
 import re
+import time
 from typing import Any, Literal, Optional
+from asyncio import Semaphore
 
 FallbackType = Literal[
     "water_planning",
@@ -42,8 +45,56 @@ class GemmaService:
         self.ollama_url = settings.ollama_base_url.rstrip("/")
         # Populated by the most recent _call_google attempt (for agent timing diagnostics).
         self.last_call_meta: dict[str, Any] = {}
+        
+        # Request throttling to avoid rate limiting
+        # Allow 1 concurrent request, others queue with 1.5s delay between starts
+        self._request_semaphore = Semaphore(1)
+        self._last_request_time = 0.0
+        self._min_request_interval = 1.5  # seconds between requests
+        
+        # Log initialization
+        if self.google_api_key:
+            masked_key = self.google_api_key[:10] + "..."
+            logger.info(f"[Gemma] Initialized with Google API (key={masked_key}, model={self.model_id})")
+        elif self.gemma_api_key:
+            masked_key = self.gemma_api_key[:10] + "..."
+            logger.info(f"[Gemma] Initialized with OpenAI-compatible provider (key={masked_key}, model={self.model_id})")
+        else:
+            logger.warning(f"[Gemma] Initialized without API key (will use Ollama or fallback, model={self.model_id})")
 
     async def generate(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        json_mode: bool = True,
+        image_b64: Optional[str] = None,
+        max_tokens: int = 1024,
+        fallback_type: Optional[FallbackType] = None,
+        max_output_tokens: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> str:
+        # Throttle requests to avoid Google API rate limiting
+        async with self._request_semaphore:
+            # Wait until minimum interval has passed since last request
+            elapsed = time.time() - self._last_request_time
+            if elapsed < self._min_request_interval:
+                wait_time = self._min_request_interval - elapsed
+                logger.debug(f"[Gemma] Throttling: waiting {wait_time:.2f}s before next request")
+                await asyncio.sleep(wait_time)
+            
+            self._last_request_time = time.time()
+            return await self._generate_impl(
+                system_prompt,
+                user_prompt,
+                json_mode,
+                image_b64,
+                max_tokens,
+                fallback_type,
+                max_output_tokens,
+                timeout,
+            )
+
+    async def _generate_impl(
         self,
         system_prompt: str,
         user_prompt: str,
@@ -155,6 +206,7 @@ class GemmaService:
         import time
 
         if not self.google_api_key:
+            logger.error("[Gemma] Google API key not configured")
             self.last_call_meta = {"ok": False, "error": "no_api_key"}
             return None
 
@@ -164,6 +216,7 @@ class GemmaService:
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self.model_id}:generateContent?key={self.google_api_key}"
         )
+        logger.info(f"[Gemma] Calling Google API: model={self.model_id}, url_base=https://generativelanguage.googleapis.com/v1beta/models/{self.model_id}:generateContent")
         parts: list[dict[str, Any]] = [{"text": f"{system_prompt}\n\n{user_prompt}"}]
         if image_b64:
             parts.insert(0, {"inline_data": {"mime_type": "image/jpeg", "data": image_b64}})
@@ -571,3 +624,67 @@ async def explain_live_camera(
         parsed = gemma.parse_json(text)
         return parsed.get("response", text)
     return text
+
+
+async def explain_live_cameras_batch(cameras_data: dict[str, dict]) -> dict[str, str]:
+    """
+    Generate Gemma explanations for multiple cameras in a single batch call.
+    More efficient than 6 separate API calls.
+    
+    Args:
+        cameras_data: {camera_id: {"vehicle_count": int, "person_count": int, "green_seconds": int, "red_seconds": int}}
+    
+    Returns:
+        {camera_id: explanation_text}
+    """
+    # Format all camera data into a single prompt
+    camera_lines = []
+    for cid, data in cameras_data.items():
+        line = (
+            f"{cid}: {data['vehicle_count']} vehicles, {data['person_count']} people, "
+            f"green {data['green_seconds']}s, red {data['red_seconds']}s"
+        )
+        camera_lines.append(line)
+    
+    user_prompt = (
+        "Provide a one-sentence explanation for each of these 6 cameras:\n\n"
+        + "\n".join(camera_lines) +
+        "\n\nFormat your response as a plain-text list with each camera ID on its own line followed by a colon and the explanation."
+    )
+    
+    batch_prompt = (
+        "You are a traffic signal assistant. Analyze 6 live camera feeds and provide concise, "
+        "operational explanations for each.\n\n"
+        "For each camera, explain the current traffic state and signal timing (1 sentence max per camera)."
+    )
+    
+    response = await gemma.generate(
+        batch_prompt,
+        user_prompt,
+        json_mode=False,
+        fallback_type="live_camera",
+    )
+    
+    # Parse the response to extract per-camera explanations
+    explanations: dict[str, str] = {}
+    for cid in cameras_data.keys():
+        explanations[cid] = "Traffic conditions monitored."  # Safe fallback
+    
+    # Try to parse the response for specific camera explanations
+    text = response.strip()
+    lines = text.split("\n")
+    for line in lines:
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+        parts = line.split(":", 1)
+        cam_id = parts[0].strip().lower()
+        explanation = parts[1].strip() if len(parts) > 1 else ""
+        
+        # Match against known camera IDs
+        for cid in cameras_data.keys():
+            if cam_id in cid.lower() or cid.lower() in cam_id:
+                explanations[cid] = explanation if explanation else "Traffic conditions monitored."
+                break
+    
+    return explanations
