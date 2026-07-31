@@ -6,6 +6,8 @@ import Sidebar from "./Sidebar";
 // import ChatPanel from "./ChatPanel";
 import { DystopiaProvider } from "@/dystopia/DystopiaProvider";
 import { LiveCamerasProvider } from "@/providers/LiveCamerasProvider";
+import { RoleProvider } from "@/providers/RoleProvider";
+import RoleSelectorModal from "./RoleSelectorModal";
 
 const moduleMap: Record<string, string> = {
   "/water": "water",
@@ -48,19 +50,22 @@ export default function DashboardShell({ children }: { children: React.ReactNode
 
   return (
     <LiveCamerasProvider>
-      <DystopiaProvider>
-        <div className="flex h-screen overflow-hidden relative">
-          <div
-            className="ambient-particles-bg"
-            style={{ transform: `translateY(${-scrollY * 0.12}px)` }}
-          />
-          <Sidebar />
-          <main ref={mainRef} className="flex-1 overflow-y-auto z-10 relative">
-            {children}
-          </main>
-          {/* <ChatPanel module={module} /> */}
-        </div>
-      </DystopiaProvider>
+      <RoleProvider>
+        <DystopiaProvider>
+          <div className="flex h-screen overflow-hidden relative">
+            <div
+              className="ambient-particles-bg"
+              style={{ transform: `translateY(${-scrollY * 0.12}px)` }}
+            />
+            <Sidebar />
+            <main ref={mainRef} className="flex-1 overflow-y-auto z-10 relative">
+              {children}
+            </main>
+            {/* <ChatPanel module={module} /> */}
+          </div>
+          <RoleSelectorModal />
+        </DystopiaProvider>
+      </RoleProvider>
     </LiveCamerasProvider>
   );
 }

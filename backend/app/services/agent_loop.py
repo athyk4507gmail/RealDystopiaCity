@@ -131,6 +131,7 @@ async def run_agent(
     history: Optional[list[dict[str, str]]] = None,
     llm: Optional[LlmFn] = None,
     progress: Optional[ProgressFn] = None,
+    role: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Run the civic agent loop.
@@ -138,16 +139,54 @@ async def run_agent(
     Returns answer, tool trace, steps_used, truncated, and timing diagnostics.
     """
     t_total0 = time.perf_counter()
+
+    # Check for department-restricted queries when the user does not have the corresponding role
+    msg_lower = message.lower()
+    
+    # 1. Traffic Department check
+    traffic_keywords = [
+        "adjust signal", "adjusting signal", "signal timing", "change light",
+        "override signal", "camera feed", "raw camera", "live camera", "dystopia view",
+        "junction x", "cross-traffic optimization", "signal duration"
+    ]
+    needs_traffic = any(k in msg_lower for k in traffic_keywords)
+    if needs_traffic and role != "traffic":
+        return {
+            "answer": "That needs Traffic Department access — want me to take you to that panel?",
+            "trace": [],
+            "steps_used": 0,
+            "truncated": False,
+            "suggested_department": "traffic",
+            "timing": {"total_ms": 0, "steps": []}
+        }
+        
+    # 2. Operations Department check
+    operations_keywords = [
+        "stress test", "metabolism stress", "stress-test", "run a stress",
+        "resilience index", "resilience score", "risk zone", "black spot",
+        "trust score", "route recommendation", "bus route"
+    ]
+    needs_operations = any(k in msg_lower for k in operations_keywords)
+    if needs_operations and role != "operations":
+        return {
+            "answer": "That needs City Operations access — want me to take you to that panel?",
+            "trace": [],
+            "steps_used": 0,
+            "truncated": False,
+            "suggested_department": "operations",
+            "timing": {"total_ms": 0, "steps": []}
+        }
+
     rebuild_civic_knowledge_index(db)
     llm_fn = llm or _default_llm
     system = AGENT_SYSTEM_PROMPT + list_tools_for_prompt()
 
     messages: list[dict[str, str]] = []
     for h in history or []:
-        role = h.get("role", "user")
+        msg_role = h.get("role", "user")
         content = h.get("content", "")
-        if role in ("user", "assistant") and content:
-            messages.append({"role": role, "content": content})
+        if msg_role in ("user", "assistant") and content:
+            messages.append({"role": msg_role, "content": content})
     messages.append({"role": "user", "content": message})
 
     trace: list[dict[str, Any]] = []

@@ -23,6 +23,7 @@ class HistoryMessage(BaseModel):
 class AgentChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     history: Optional[list[HistoryMessage]] = None
+    role: Optional[str] = None
 
 
 def _public_result(result: dict) -> dict:
@@ -32,13 +33,14 @@ def _public_result(result: dict) -> dict:
         "steps_used": result["steps_used"],
         "truncated": result.get("truncated", False),
         "timing": result.get("timing"),
+        "suggested_department": result.get("suggested_department"),
     }
 
 
 @router.post("/chat")
 async def agent_chat(data: AgentChatRequest, db: Session = Depends(get_db)):
     history = [{"role": h.role, "content": h.content} for h in (data.history or [])]
-    result = await run_agent(db, data.message.strip(), history=history)
+    result = await run_agent(db, data.message.strip(), history=history, role=data.role)
     return _public_result(result)
 
 
@@ -58,6 +60,7 @@ async def agent_chat_stream(data: AgentChatRequest, db: Session = Depends(get_db
                 data.message.strip(),
                 history=history,
                 progress=on_progress,
+                role=data.role,
             )
             await queue.put({"type": "done", **_public_result(result)})
         except Exception as exc:
