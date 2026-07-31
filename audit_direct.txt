@@ -1,0 +1,19 @@
+﻿=== 1. DIRECT health-watch ward 2 (Koramangala) ===
+  ward_name=Koramangala risk_score=31.5 trend=up
+  stagnant_7d=7 complaints_7d=9 temp_anomaly=0.0
+  scoring.formula=risk_score = (stagnant_reports_norm Ã— 0.30) + (heat_index_norm Ã— 0.25) + (complaint_density_norm Ã— 0.25) + (metabolism_stress_norm Ã— 0.20)
+
+=== 2. DIRECT metabolism stress-test heatwave ===
+  event_type=heatwave resilience_index=64.3
+  water_before=60.7 water_after=60.7
+  narrative_snippet=During the current heatwave, the city's primary infrastructure remains stable, with no immediate cross-domain cascade ef
+
+=== 3. DIRECT traffic feed (top 3 by congestion) ===
+  Trinity Circle congestion=66.11477374044208 status=heavy
+  Hebbal Flyover congestion=58.646213853296636 status=moderate
+  Marathahalli Bridge congestion=56.1639653068492 status=moderate
+
+=== 4. DIRECT risk zones week=4 (top 3 by risk_score) ===
+  Hosur Road risk_score=95.0 accidents=1
+  Bannerghatta Road risk_score=95.0 accidents=1
+  Outer Ring Road risk_score=95.0 accidents=1

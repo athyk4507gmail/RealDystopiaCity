@@ -1,0 +1,4 @@
+﻿DIRECT_HW ward=Koramangala score=31.5 trend=up stagnant=7 complaints=9
+DIRECT_MET event=heatwave resilience_index=64.3 water_before=60.7 water_after=60.7
+DIRECT_TRAFFIC top3=$($_.name)=$($_.congestion_pct),$($_.name)=$($_.congestion_pct),$($_.name)=$($_.congestion_pct)
+DIRECT_RISKZONE top3=$($_.name)=$($_.risk_score),$($_.name)=$($_.risk_score),$($_.name)=$($_.risk_score)

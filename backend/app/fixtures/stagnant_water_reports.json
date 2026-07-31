@@ -1,0 +1,26 @@
+// TEMP: replace with real Water Distribution API call once merged — see getStagnantWaterReports()
+// Shape: list of { ward_id, ward_name, stagnant_reports_7d, last_reported_at }
+// stagnant_reports_7d = count of stagnant-water / leakage reports filed in rolling 7-day window
+// This fixture uses plausible counts derived from ward population and known drainage stress areas.
+[
+  { "ward_id": 1,  "ward_name": "Shivaji Nagar",   "stagnant_reports_7d": 3,  "last_reported_at": "2026-07-26" },
+  { "ward_id": 2,  "ward_name": "Koramangala",     "stagnant_reports_7d": 7,  "last_reported_at": "2026-07-27" },
+  { "ward_id": 3,  "ward_name": "Indiranagar",     "stagnant_reports_7d": 4,  "last_reported_at": "2026-07-27" },
+  { "ward_id": 4,  "ward_name": "Whitefield",      "stagnant_reports_7d": 9,  "last_reported_at": "2026-07-28" },
+  { "ward_id": 5,  "ward_name": "Jayanagar",       "stagnant_reports_7d": 2,  "last_reported_at": "2026-07-25" },
+  { "ward_id": 6,  "ward_name": "Malleshwaram",    "stagnant_reports_7d": 2,  "last_reported_at": "2026-07-24" },
+  { "ward_id": 7,  "ward_name": "Rajajinagar",     "stagnant_reports_7d": 1,  "last_reported_at": "2026-07-22" },
+  { "ward_id": 8,  "ward_name": "BTM Layout",      "stagnant_reports_7d": 8,  "last_reported_at": "2026-07-28" },
+  { "ward_id": 9,  "ward_name": "Hebbal",          "stagnant_reports_7d": 3,  "last_reported_at": "2026-07-26" },
+  { "ward_id": 10, "ward_name": "Yelahanka",       "stagnant_reports_7d": 1,  "last_reported_at": "2026-07-23" },
+  { "ward_id": 11, "ward_name": "Electronic City", "stagnant_reports_7d": 5,  "last_reported_at": "2026-07-27" },
+  { "ward_id": 12, "ward_name": "Marathahalli",    "stagnant_reports_7d": 10, "last_reported_at": "2026-07-28" },
+  { "ward_id": 13, "ward_name": "Banashankari",    "stagnant_reports_7d": 4,  "last_reported_at": "2026-07-26" },
+  { "ward_id": 14, "ward_name": "Vijayanagar",     "stagnant_reports_7d": 2,  "last_reported_at": "2026-07-25" },
+  { "ward_id": 15, "ward_name": "HSR Layout",      "stagnant_reports_7d": 6,  "last_reported_at": "2026-07-27" },
+  { "ward_id": 16, "ward_name": "Frazer Town",     "stagnant_reports_7d": 3,  "last_reported_at": "2026-07-26" },
+  { "ward_id": 17, "ward_name": "Basavanagudi",    "stagnant_reports_7d": 2,  "last_reported_at": "2026-07-24" },
+  { "ward_id": 18, "ward_name": "JP Nagar",        "stagnant_reports_7d": 5,  "last_reported_at": "2026-07-27" },
+  { "ward_id": 19, "ward_name": "Bellandur",       "stagnant_reports_7d": 12, "last_reported_at": "2026-07-28" },
+  { "ward_id": 20, "ward_name": "Sarjapur",        "stagnant_reports_7d": 8,  "last_reported_at": "2026-07-28" }
+]
